@@ -7,14 +7,46 @@ use core::task::{RawWakerVTable, RawWaker, Waker};
 use core::sync::atomic::{AtomicPtr, Ordering};
 use core::ptr::null_mut;
 
-
+/// Helper struct for task dealing with task switching.
 pub struct Yield(bool);
 pub struct YieldUntil<F: FnMut()->bool>(F);
 pub struct YieldTimes{pub remaining: usize}
 impl Yield{
+    /// When awaited yields this task once. Causes task switch.
+    ///
+    /// Equivalent to using macro:
+    /// ```
+    /// # #[macro_use]
+    /// # extern crate juggle;
+    /// # fn main(){
+    /// # use futures::executor::block_on;
+    /// # block_on(async move{
+    /// yield_once!()
+    /// # });
+    /// # }
+    /// ```
     pub fn once()->Self{Self(false)}
+    /// When awaited it won't cause task switch.
     pub fn none()->Self{Self(true)}
+    /// When awaited yields this task specific number of times.
     pub fn times(remaining: usize)->YieldTimes{ YieldTimes{remaining} }
+    /// When awaited yields this task until provided closure returns true.
+    ///
+    /// Note that when first call on closure returns true, this task will not be yielded.
+    /// # Examples
+    /// ```
+    /// # fn main(){
+    /// # use futures::executor::block_on;
+    /// # use juggle::Yield;
+    /// # use core::sync::atomic::{AtomicBool, Ordering};
+    /// # block_on(async move{
+    /// let interrupt_flag: &AtomicBool = //...
+    /// # &AtomicBool::new(true);
+    ///
+    /// Yield::until(||interrupt_flag.load(Ordering::Relaxed)).await;
+    /// # });
+    /// # }
+    /// ```
     pub fn until<F: FnMut()->bool>(predicate: F)->YieldUntil<F>{
         YieldUntil(predicate)
     }

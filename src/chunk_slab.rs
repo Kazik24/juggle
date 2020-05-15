@@ -47,8 +47,10 @@ impl<I: ChunkSlabKey,T> ChunkSlab<I,T>{
         }
     }
     pub fn insert(&mut self,val: T)->I{
-        if self.len.saturating_sub(1) == I::max_value(){
-            panic!("ChunkSlab size overflow.");
+        if I::max_value() != usize::max_value(){
+            if self.len.saturating_sub(1) == I::max_value(){
+                panic!("ChunkSlab size overflow.");
+            }
         }
 
         let key = self.next;
@@ -228,5 +230,20 @@ mod tests{
         assert_eq!(slab.get(k3),None);
         assert_eq!(slab.get(k4),None);
         assert_eq!(slab.get(k5),None);
+    }
+    #[test]
+    fn test_pinning(){ //never realloc structures, required by scheduler algorithm
+        let mut slab = ChunkSlab::<u8,_>::new();
+        let k1 = slab.insert(10);
+        let k2 = slab.insert(20);
+        let ptr1 = slab.get(k1).unwrap() as *const _;
+        let ptr2 = slab.get(k2).unwrap() as *const _;
+        for _ in 0..200 {
+            slab.insert(30);
+        }
+        let ptr11 = slab.get(k1).unwrap() as *const _;
+        let ptr22 = slab.get(k2).unwrap() as *const _;
+        assert!(core::ptr::eq(ptr1,ptr11));
+        assert!(core::ptr::eq(ptr2,ptr22));
     }
 }
