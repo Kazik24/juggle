@@ -6,16 +6,23 @@ use crate::utils::{AtomicWakerRegistry, to_waker, DynamicWake};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::pin::Pin;
 
-pub struct DynamicFuture{ //not send not sync
+pub(crate) struct DynamicFuture{ //not send not sync
     pinned_future: NonNull<dyn Future<Output=()>>,
     flags: SyncFlags,
-    name: Option<String>,
+    name: TaskName,
     suspended: bool,
+    cancelled: bool,
+}
+#[derive(Debug)]
+pub(crate) enum TaskName{
+    Static(&'static str),
+    Dynamic(Box<str>),
+    None,
 }
 
 impl DynamicFuture{
     //safe
-    pub fn new_allocated(mut future: Pin<Box<dyn Future<Output=()>>>,
+    pub fn new_allocated(future: Pin<Box<dyn Future<Output=()>>>,
                          global: Arc<AtomicWakerRegistry>,suspended: bool)->Self{
         let ptr = unsafe{
             NonNull::new_unchecked(Box::into_raw(Pin::into_inner_unchecked(future)))
@@ -23,28 +30,30 @@ impl DynamicFuture{
         Self{
             pinned_future: ptr,
             flags: SyncFlags::new(false,global),
-            name: None,
+            name: TaskName::None,
             suspended,
+            cancelled: false,
         }
     }
     //unsafe cause this future can be pinned as local variable on stack, and we erase its lifetime so
     //that that it need to be ensured that this object is not used after that variable gets dropped.
     pub unsafe fn new_static(future: Pin<&mut (dyn Future<Output=()> + 'static)>,
                              global: Arc<AtomicWakerRegistry>,suspended: bool)->Self{
-        let ptr = unsafe{
-            NonNull::new_unchecked(Pin::into_inner_unchecked(future) as *mut _)
-        };
+        let ptr = NonNull::new_unchecked(Pin::into_inner_unchecked(future) as *mut _);
         Self{
             pinned_future: ptr,
             flags: SyncFlags::new(true,global),
-            name: None,
+            name: TaskName::None,
             suspended,
+            cancelled: false,
         }
     }
-    pub fn set_name(&mut self,name: impl Into<String>){self.name = Some(name.into())}
-    pub fn get_name(&self)->&str{ self.name.as_deref().unwrap_or("") }
+    pub fn set_name(&mut self,name: TaskName){self.name = name;}
+    pub fn get_name(&self)->&TaskName{&self.name}
     pub fn set_suspended(&mut self,val: bool){self.suspended = val;}
     pub fn is_suspended(&self)->bool{self.suspended}
+    pub fn set_cancelled(&mut self,val: bool){self.cancelled = val;}
+    pub fn is_cancelled(&self)->bool{self.cancelled}
     pub fn is_runnable(&self)->bool{self.flags.is_runnable()}
     pub fn poll_local(&mut self)->Poll<()>{
         //store false cause if it became true before this operation then polling can be done

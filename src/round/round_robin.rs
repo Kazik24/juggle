@@ -2,13 +2,13 @@ use std::collections::{VecDeque, LinkedList};
 use core::future::Future;
 use core::task::{Context, Poll, Waker};
 use std::pin::Pin;
-use std::marker::PhantomPinned;
 use std::rc::{Rc, Weak};
 use std::cell::UnsafeCell;
 use std::sync::Arc;
 use std::ptr::NonNull;
 use super::dyn_future::DynamicFuture;
 use crate::utils::AtomicWakerRegistry;
+use crate::round::dyn_future::TaskName;
 
 //round robin scheduling
 pub struct Wheel{ //not clone so that rc has strong count of 1
@@ -55,7 +55,7 @@ impl WheelHandle{
         };
         let this = Self::unchecked_mut(&rc);
         let mut future = DynamicFuture::new_allocated(future,this.last_waker.clone(),false);
-        future.set_name(name);
+        future.set_name(TaskName::Dynamic(name.into_boxed_str()));
         if this.which_buffer { //if now 1 is executed then add to 0 and vice versa.
             this.runnable0.push_back(future);
         } else {

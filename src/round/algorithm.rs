@@ -1,8 +1,7 @@
-use crate::round::dyn_future::DynamicFuture;
-use std::collections::{VecDeque, HashSet, HashMap};
+use crate::round::dyn_future::{DynamicFuture, TaskName};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use crate::utils::AtomicWakerRegistry;
-use core::ptr::NonNull;
 use core::pin::Pin;
 use core::future::Future;
 use core::task::{Waker, Poll, Context};
@@ -33,6 +32,8 @@ impl SchedulerAlgorithm{
             registry: ChunkSlab::new(),
         }
     }
+    pub(crate) fn get_current(&self)->Option<TaskKey>{self.current}
+    //safe to call from inside task
     fn enqueue_runnable(&mut self,key: TaskKey){
         if self.which_buffer { //if now 1 is executed then add to 0 and vice versa.
             self.runnable0.push_back(key);
@@ -40,26 +41,52 @@ impl SchedulerAlgorithm{
             self.runnable1.push_back(key);
         }
     }
-
-    pub(crate) fn register(&mut self,future: Pin<Box<dyn Future<Output=()> + 'static>>,suspended: bool)->TaskKey{
-        let dynamic = DynamicFuture::new_allocated(future,self.last_waker.clone(),suspended);
+    pub(crate) fn clone_registry(&self)->Arc<AtomicWakerRegistry>{self.last_waker.clone()}
+    //safe to call from inside task
+    pub(crate) fn register(&mut self,dynamic: DynamicFuture)->TaskKey{
+        let suspended = dynamic.is_suspended();
         let key = self.registry.insert(dynamic); //won't realloc because it uses ChunkSlab
-        //let key = self.new_tasks.push(dynamic); // we dont have task key yet...
         if !suspended {
             self.enqueue_runnable(key);
         }
         key
     }
-
+    //safe to call from inside task
     pub(crate) fn resume(&mut self,key: TaskKey)->bool{
         let task = self.registry.get_mut(key).unwrap();
         if task.is_suspended() {
             task.set_suspended(false);
-            self.enqueue_runnable(key);
+            self.enqueue_runnable(key); //suspended task always has runnable state (for now)
             return true;
         }
         false
     }
+
+    //if rotate_once encounters suspended task, then it will be removed from queue
+    pub(crate) fn suspend(&mut self,key: TaskKey)->bool{
+        match self.registry.get_mut(key) {
+            Some(task) => {
+                let prev = task.is_suspended();
+                task.set_suspended(true);
+                !prev
+            }
+            None => false,
+        }
+    }
+
+    pub(crate) fn cancel(&mut self,key: TaskKey)->bool{
+        match self.registry.get_mut(key) {
+            Some(task) => {
+                let prev = task.is_cancelled();
+                task.set_cancelled(true);
+                !prev
+            }
+            None => false,
+        }
+    }
+    pub(crate) fn get_dynamic(&self,key: TaskKey)->Option<&DynamicFuture>{ self.registry.get(key) }
+    pub(crate) fn get_dynamic_mut(&mut self,key: TaskKey)->Option<&mut DynamicFuture>{ self.registry.get_mut(key) }
+
 
     pub(crate) fn poll_internal(&mut self, cx: &mut Context<'_>) -> Poll<()> {
         loop{
@@ -111,6 +138,13 @@ impl SchedulerAlgorithm{
 
         while let Some(run_key) = from.pop_front() {
             let run_task = registry.get_mut(run_key).unwrap();
+            if run_task.is_cancelled() {
+                registry.remove(run_key);
+                continue; //remove from registry
+            }
+            if run_task.is_suspended() {
+                continue; // remove from queue
+            }
             *current = Some(run_key);
             let guard = Guard(current);
             // be careful with interior mutability types here cause poll_local can invoke any method
@@ -133,10 +167,10 @@ impl SchedulerAlgorithm{
     fn drain_runnable(registry: &mut ChunkSlab<TaskKey,DynamicFuture>,
                       from: &mut Vec<TaskKey>,to: &mut VecDeque<TaskKey>)->bool{
         let prev = from.len();
-        from.retain(|elem|{
-            let task = registry.get_mut(*elem).unwrap();
+        from.retain(|&elem|{
+            let task = registry.get_mut(elem).unwrap();
             if task.is_runnable(){
-                to.push_back(*elem);
+                to.push_back(elem);
                 return false;
             }
             true

@@ -1,63 +1,49 @@
 use juggle::*;
-use futures::executor::block_on;
 use std::time::Duration;
 use std::collections::hash_map::RandomState;
-use futures::{SinkExt, StreamExt};
 use std::hash::{BuildHasher, Hasher};
+use rand::Rng;
 
-async fn delay_thread(dur: Duration){
-    use futures::channel::mpsc::channel;
-    let (mut s,mut r) = channel(0);
-    std::thread::spawn(move ||{
-        std::thread::sleep(dur);
-        block_on(s.send(()));
-    });
-    r.next().await;
-}
-async fn waiting_task(id:i32){
-    println!("Wait Task [{}] enter",id);
+
+async fn waiting_task(handle: WheelHandle){
+    println!("Wait Task [{}] enter",handle.get_current_name().as_deref().unwrap_or(""));
     for i in 1..20 {
-        let val = RandomState::new().build_hasher().finish();
-        delay_thread(Duration::from_millis(1 + (val % (10 + id as u64)))).await;
-        println!("Wait Task [{}] point {}",id,i);
+        let dur = Duration::from_millis(rand::thread_rng().gen_range(10,20));
+        smol::Timer::after(dur).await;
+        println!("Wait Task [{}] point {}",handle.get_current_name().as_deref().unwrap_or(""),i);
     }
-    delay_thread(Duration::from_millis(3)).await;
-    println!("Wait Task [{}] exit",id);
+    smol::Timer::after(Duration::from_millis(3)).await;
+    println!("Wait Task [{}] exit",handle.get_current_name().as_deref().unwrap_or(""));
 }
 
-async fn test_task(id:i32,handle: WheelHandle){
-    println!("Task [{}] enter",id);
+async fn test_task(handle: WheelHandle){
+    println!("Task [{}] enter",handle.get_current_name().as_deref().unwrap_or(""));
     yield_once!();
-    println!("Task [{}] point 1",id);
-    if id == 1 {
-        handle.spawn_named("WT10",waiting_task(id*10));
-        handle.spawn_named("WT11",waiting_task(id*10+1));
-        handle.spawn_named("WT12",waiting_task(id*10+2));
+    println!("Task [{}] point 1",handle.get_current_name().as_deref().unwrap_or(""));
+    if handle.get_current_name().as_deref() == Some("T1") {
+        handle.spawn(TaskParams::named("WT10"),waiting_task(handle.clone()));
+        handle.spawn(TaskParams::named("WT11"),waiting_task(handle.clone()));
+        handle.spawn(TaskParams::named("WT12"),waiting_task(handle.clone()));
     }
     yield_once!();
-    println!("Task [{}] point 2",id);
+    println!("Task [{}] point 2",handle.get_current_name().as_deref().unwrap_or(""));
     yield_once!();
-    println!("Task [{}] point 3",id);
+    println!("Task [{}] point 3",handle.get_current_name().as_deref().unwrap_or(""));
     yield_once!();
-    println!("Task [{}] exit",id);
+    println!("Task [{}] exit",handle.get_current_name().as_deref().unwrap_or(""));
 }
 
 #[test]
 pub fn test_round_robin(){
     let sch = Wheel::new();
-    let handle = sch.handle();
-    handle.spawn_named("T1",test_task(1,handle.clone()));
-    handle.spawn_named("T2",test_task(2,handle.clone()));
-    handle.spawn_named("T3",test_task(3,handle.clone()));
-    handle.spawn_named("T4",test_task(4,handle.clone()));
+    let handle = sch.handle().clone();
+    handle.spawn(TaskParams::named("T1"),test_task(handle.clone()));
+    handle.spawn(TaskParams::named("T2"),test_task(handle.clone()));
+    handle.spawn(TaskParams::named("T3"),test_task(handle.clone()));
+    handle.spawn(TaskParams::named("T4"),test_task(handle.clone()));
     println!("Valid: {}",handle.is_valid());
-    // let other = Wheel::new();
-    // let safe = other.try_lock().ok().unwrap();
-    // spawn(move ||{
-    //     block_on(safe);
-    // });
 
-    block_on(sch);
+    smol::run(sch);
     println!("Valid: {}",handle.is_valid());
     println!("Finished round robin.");
 }
