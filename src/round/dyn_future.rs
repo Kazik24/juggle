@@ -1,10 +1,11 @@
-use std::ptr::NonNull;
+use core::ptr::NonNull;
 use core::future::Future;
 use core::task::*;
-use std::sync::Arc;
+use alloc::sync::Arc;
+use alloc::boxed::Box;
 use crate::utils::{AtomicWakerRegistry, to_waker, DynamicWake};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::pin::Pin;
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::pin::Pin;
 
 pub(crate) struct DynamicFuture{ //not send not sync
     pinned_future: NonNull<dyn Future<Output=()>>,
@@ -13,7 +14,7 @@ pub(crate) struct DynamicFuture{ //not send not sync
     suspended: bool,
     cancelled: bool,
 }
-#[derive(Debug)]
+#[derive(Debug,Eq,PartialEq,Hash,Clone)]
 pub(crate) enum TaskName{
     Static(&'static str),
     Dynamic(Box<str>),

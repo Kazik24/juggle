@@ -1,11 +1,11 @@
-use crate::round::dyn_future::{DynamicFuture, TaskName};
-use std::collections::VecDeque;
-use std::sync::Arc;
+use crate::round::dyn_future::DynamicFuture;
+use alloc::collections::VecDeque;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use crate::utils::AtomicWakerRegistry;
-use core::pin::Pin;
-use core::future::Future;
 use core::task::{Waker, Poll, Context};
 use crate::chunk_slab::ChunkSlab;
+use crate::round::handle::State;
 
 
 type TaskKey = usize;
@@ -53,13 +53,14 @@ impl SchedulerAlgorithm{
     }
     //safe to call from inside task
     pub(crate) fn resume(&mut self,key: TaskKey)->bool{
-        let task = self.registry.get_mut(key).unwrap();
-        if task.is_suspended() {
-            task.set_suspended(false);
-            self.enqueue_runnable(key); //suspended task always has runnable state (for now)
-            return true;
+        match self.registry.get_mut(key) {
+            Some(task) if task.is_suspended() => {
+                task.set_suspended(false);
+                self.enqueue_runnable(key); //suspended task always has runnable state (for now)
+                true
+            }
+            _ => false,
         }
-        false
     }
 
     //if rotate_once encounters suspended task, then it will be removed from queue
@@ -71,6 +72,18 @@ impl SchedulerAlgorithm{
                 !prev
             }
             None => false,
+        }
+    }
+
+    pub(crate) fn get_state(&self,key: TaskKey)-> State {
+        match self.registry.get(key) {
+            Some(task) => {
+                if task.is_cancelled() { State::Cancelled }
+                else if task.is_suspended() { State::Suspended }
+                else if task.is_runnable() { State::Runnable }
+                else { State::Waiting }
+            }
+            None => State::Unknown,
         }
     }
 
@@ -87,7 +100,7 @@ impl SchedulerAlgorithm{
     pub(crate) fn get_dynamic(&self,key: TaskKey)->Option<&DynamicFuture>{ self.registry.get(key) }
     pub(crate) fn get_dynamic_mut(&mut self,key: TaskKey)->Option<&mut DynamicFuture>{ self.registry.get_mut(key) }
 
-
+    // TODO: what to do when all tasks are suspended.
     pub(crate) fn poll_internal(&mut self, cx: &mut Context<'_>) -> Poll<()> {
         loop{
             self.last_waker.clear();//drop previous waker if any
@@ -140,7 +153,7 @@ impl SchedulerAlgorithm{
             let run_task = registry.get_mut(run_key).unwrap();
             if run_task.is_cancelled() {
                 registry.remove(run_key);
-                continue; //remove from registry
+                continue; //remove from queue and registry
             }
             if run_task.is_suspended() {
                 continue; // remove from queue

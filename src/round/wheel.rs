@@ -1,9 +1,9 @@
-use std::rc::Rc;
-use std::cell::UnsafeCell;
+use alloc::rc::Rc;
+use core::cell::UnsafeCell;
 use crate::round::algorithm::SchedulerAlgorithm;
 use super::handle::*;
 use core::future::Future;
-use std::pin::Pin;
+use core::pin::Pin;
 use core::task::*;
 
 
@@ -18,6 +18,55 @@ use core::task::*;
 /// # Managing tasks
 /// You can spawn/suspend/resume/cancel any task as long as you have it's key, and handle to this
 /// scheduler. Handle can be obtained from this object using method `handle(&self)`
+///
+/// # Examples
+/// ```
+/// # extern crate alloc;
+/// use juggle::*;
+/// use alloc::collections::VecDeque;
+/// use alloc::rc::Rc;
+/// use core::cell::RefCell;
+///
+/// # use core::sync::atomic::*;
+/// # async fn read_temperature_sensor()->i32 { 10 }
+/// # fn init_timer(){}
+/// # static CNT: AtomicUsize = AtomicUsize::new(0);
+/// # fn get_timer_value()->u32 { CNT.fetch_add(1,Ordering::Relaxed) as _ }
+/// # fn reset_timer(){CNT.store(0,Ordering::Relaxed);}
+/// # fn process_data(queue: &mut VecDeque<i32>){
+/// #     while let Some(_) = queue.pop_front() { }
+/// # }
+/// async fn collect_temperature(queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle){
+///     loop{ // loop forever or until cancelled
+///         let temperature: i32 = read_temperature_sensor().await;
+///         queue.borrow_mut().push_back(temperature);
+///         yield_once!(); // give scheduler opportunity to execute other tasks
+///     }
+/// }
+///
+/// async fn wait_for_timer(id: IdNum,queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle){
+///     init_timer();
+///     for _ in 0..5 {
+///         yield_until!(get_timer_value() >= 200); // busy wait but also executes other tasks.
+///         process_data(&mut queue.borrow_mut());
+///     }
+///     handle.cancel(id); // cancel 'collect_temperature' task.
+/// }
+///
+/// fn main(){
+///     let wheel = Wheel::new();
+///     let handle = wheel.handle(); // handle to manage tasks, can be cloned inside this thread
+///     let queue = Rc::new(RefCell::new(VecDeque::new()));
+///
+///     let temp_id = handle.spawn(SpawnParams::default(),
+///                                collect_temperature(queue.clone(),handle.clone()));
+///     handle.spawn(SpawnParams::default(),
+///                  wait_for_timer(temp_id.unwrap(),queue.clone(),handle.clone()));
+///
+///     // execute tasks
+///     smol::block_on(wheel); // or any other utility to block on future.
+/// }
+/// ```
 pub struct Wheel{
     ptr: Rc<UnsafeCell<SchedulerAlgorithm>>,
     handle: WheelHandle,

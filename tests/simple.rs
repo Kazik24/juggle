@@ -1,7 +1,5 @@
 use juggle::*;
 use std::time::Duration;
-use std::collections::hash_map::RandomState;
-use std::hash::{BuildHasher, Hasher};
 use rand::Rng;
 
 
@@ -21,9 +19,9 @@ async fn test_task(handle: WheelHandle){
     yield_once!();
     println!("Task [{}] point 1",handle.get_current_name().as_deref().unwrap_or(""));
     if handle.get_current_name().as_deref() == Some("T1") {
-        handle.spawn(TaskParams::named("WT10"),waiting_task(handle.clone()));
-        handle.spawn(TaskParams::named("WT11"),waiting_task(handle.clone()));
-        handle.spawn(TaskParams::named("WT12"),waiting_task(handle.clone()));
+        handle.spawn(SpawnParams::named("WT10"), waiting_task(handle.clone()));
+        handle.spawn(SpawnParams::named("WT11"), waiting_task(handle.clone()));
+        handle.spawn(SpawnParams::named("WT12"), waiting_task(handle.clone()));
     }
     yield_once!();
     println!("Task [{}] point 2",handle.get_current_name().as_deref().unwrap_or(""));
@@ -37,10 +35,10 @@ async fn test_task(handle: WheelHandle){
 pub fn test_round_robin(){
     let sch = Wheel::new();
     let handle = sch.handle().clone();
-    handle.spawn(TaskParams::named("T1"),test_task(handle.clone()));
-    handle.spawn(TaskParams::named("T2"),test_task(handle.clone()));
-    handle.spawn(TaskParams::named("T3"),test_task(handle.clone()));
-    handle.spawn(TaskParams::named("T4"),test_task(handle.clone()));
+    handle.spawn("T1", test_task(handle.clone()));
+    handle.spawn("T2", test_task(handle.clone()));
+    handle.spawn("T3", test_task(handle.clone()));
+    handle.spawn("T4", test_task(handle.clone()));
     println!("Valid: {}",handle.is_valid());
 
     smol::run(sch);
