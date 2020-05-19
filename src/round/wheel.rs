@@ -33,6 +33,7 @@ use core::task::*;
 /// # static CNT: AtomicUsize = AtomicUsize::new(0);
 /// # fn get_timer_value()->u32 { CNT.fetch_add(1,Ordering::Relaxed) as _ }
 /// # fn reset_timer(){CNT.store(0,Ordering::Relaxed);}
+/// # fn shutdown_timer(){}
 /// # fn process_data(queue: &mut VecDeque<i32>){
 /// #     while let Some(_) = queue.pop_front() { }
 /// # }
@@ -49,8 +50,10 @@ use core::task::*;
 ///     for _ in 0..5 {
 ///         yield_until!(get_timer_value() >= 200); // busy wait but also executes other tasks.
 ///         process_data(&mut queue.borrow_mut());
+///         reset_timer();
 ///     }
 ///     handle.cancel(id); // cancel 'collect_temperature' task.
+///     shutdown_timer();
 /// }
 ///
 /// fn main(){

@@ -117,6 +117,17 @@ impl<I: ChunkSlabKey,T> ChunkSlab<I,T>{
             _ => None,
         }
     }
+    pub fn iter(& self)->impl Iterator<Item=(I,&T)>{
+        self.entries.iter().enumerate().map(|e|{
+            let off = e.0 * CHUNK_SIZE;
+            e.1.data.iter().enumerate().map(move |e|(off+e.0,e.1))
+        }).flatten().filter_map(|e|{
+            match e.1 {
+                Entry::Full(v) => Some((I::from_index(e.0),v)),
+                Entry::Empty(_) => None,
+            }
+        })
+    }
 }
 
 pub(crate) trait ChunkSlabKey: Copy{

@@ -103,6 +103,11 @@ impl WheelHandle{
     pub fn get_current_name(&self)->Option<String>{
         self.current().map(|id|self.with_name(id, |s|s.map(|s|s.to_string()).unwrap_or(String::new())))
     }
+    pub fn get_by_name(&self,name: &str)->Option<IdNum>{
+        unwrap_weak!(self,this,None);
+        this.get_by_name(name).map(|k|IdNum(k))
+    }
+
 
     pub fn terminate_scheduler(&self)->bool{//remove all tasks from scheduler
         todo!()
@@ -112,6 +117,20 @@ impl WheelHandle{
         unsafe{ &mut *rc.get() }
     }
 
+    fn fmt_name(&self, f: &mut Formatter<'_>,name: &str) -> core::fmt::Result {
+        let rc = match self.ptr.upgrade() {
+            Some(v) => v,
+            None => return write!(f,"{}{{ Invalid }}",name),
+        };
+        let this = Self::unchecked_mut(&rc);
+        this.format_internal(f,name)
+    }
+}
+
+impl Debug for WheelHandle{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        self.fmt_name(f,"WheelHandle")
+    }
 }
 
 impl SpawnParams {

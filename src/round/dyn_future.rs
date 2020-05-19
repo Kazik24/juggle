@@ -6,6 +6,7 @@ use alloc::boxed::Box;
 use crate::utils::{AtomicWakerRegistry, to_waker, DynamicWake};
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::pin::Pin;
+use std::ops::Deref;
 
 pub(crate) struct DynamicFuture{ //not send not sync
     pinned_future: NonNull<dyn Future<Output=()>>,
@@ -51,6 +52,13 @@ impl DynamicFuture{
     }
     pub fn set_name(&mut self,name: TaskName){self.name = name;}
     pub fn get_name(&self)->&TaskName{&self.name}
+    pub fn get_name_str(&self)->Option<&str>{
+        match &self.name {
+            TaskName::Static(s) => Some(s),
+            TaskName::Dynamic(s) => Some(s.deref()),
+            TaskName::None => None,
+        }
+    }
     pub fn set_suspended(&mut self,val: bool){self.suspended = val;}
     pub fn is_suspended(&self)->bool{self.suspended}
     pub fn set_cancelled(&mut self,val: bool){self.cancelled = val;}

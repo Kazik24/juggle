@@ -1,4 +1,4 @@
-use crate::round::dyn_future::DynamicFuture;
+use crate::round::dyn_future::{DynamicFuture, TaskName};
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -6,6 +6,9 @@ use crate::utils::AtomicWakerRegistry;
 use core::task::{Waker, Poll, Context};
 use crate::chunk_slab::ChunkSlab;
 use crate::round::handle::State;
+use std::ops::Deref;
+use std::fmt::{Formatter, Debug};
+use std::mem::swap;
 
 
 type TaskKey = usize;
@@ -97,8 +100,88 @@ impl SchedulerAlgorithm{
             None => false,
         }
     }
+    pub(crate) fn get_by_name(&self,name: &str)->Option<TaskKey>{
+        for (k,v) in self.registry.iter(){
+            match v.get_name() {
+                TaskName::Dynamic(n) if n.deref() == name => return Some(k),
+                TaskName::Static(n) if *n == name => return Some(k),
+                _ => {}
+            }
+        }
+        None
+    }
+
     pub(crate) fn get_dynamic(&self,key: TaskKey)->Option<&DynamicFuture>{ self.registry.get(key) }
     pub(crate) fn get_dynamic_mut(&mut self,key: TaskKey)->Option<&mut DynamicFuture>{ self.registry.get_mut(key) }
+
+    pub(crate) fn format_internal(&self, f: &mut Formatter<'_>,name: &str) -> core::fmt::Result {
+        pub(crate) struct DebugTask<'a>(
+            &'a ChunkSlab<TaskKey,DynamicFuture>,
+            Option<TaskKey>,
+        );
+
+        impl<'a> Debug for DebugTask<'a>{
+            fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+                match self.1 {
+                    Some(id) => {
+                        if let Some(task) = self.0.get(id) {
+                            return match task.get_name_str() {
+                                Some(s) => write!(f,"0x{:X}:{}",id,s),
+                                None => write!(f,"0x{:X}",id),
+                            }
+                        }
+                    },
+                    _ => {},
+                }
+                write!(f,"None")
+            }
+        }
+
+        writeln!(f,"{}{{",name)?;
+        let span = 10;
+        writeln!(f,"{:>s$}: {:?}","current",DebugTask(&self.registry,self.current),s=span)?;
+
+        struct RunnableDebug<'a>(&'a SchedulerAlgorithm);
+        impl<'a> Debug for RunnableDebug<'a>{
+            fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+                let mut buff0 = &self.0.runnable0;
+                let mut buff1 = &self.0.runnable1;
+                if self.0.which_buffer {swap(&mut buff0,&mut buff1);}
+                let buff0 = buff0.iter().map(|&k|DebugTask(&self.0.registry,Some(k)));
+                let buff1 = buff1.iter().map(|&k|DebugTask(&self.0.registry,Some(k)));
+                if self.0.runnable0.is_empty() && self.0.runnable1.is_empty() { write!(f,"None") }
+                else { f.debug_list().entries(buff0).entries(buff1).finish() }
+            }
+        }
+        writeln!(f,"{:>s$}: {:?}","runnable",RunnableDebug(self),s=span)?;
+
+        struct WaitingDebug<'a>(&'a SchedulerAlgorithm);
+        impl<'a> Debug for WaitingDebug<'a>{
+            fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+                let buff = self.0.deferred.iter().map(|&k|DebugTask(&self.0.registry,Some(k)));
+                if self.0.deferred.is_empty() { write!(f,"None") }
+                else { f.debug_list().entries(buff).finish() }
+            }
+        }
+        writeln!(f,"{:>s$}: {:?}","waiting",WaitingDebug(self),s=span)?;
+
+        struct SuspendedDebug<'a>(&'a SchedulerAlgorithm);
+        impl<'a> Debug for SuspendedDebug<'a>{
+            fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+                let mut buff = self.0.registry.iter().map(|(k,_)|DebugTask(&self.0.registry,Some(k)))
+                    .filter(|t|{
+                        match t.1.map(|id|t.0.get(id)).flatten() {
+                            Some(task) => task.is_suspended(),
+                            None => false,
+                        }
+                    });
+                if let Some(first) = buff.next() { f.debug_list().entry(&first).entries(buff).finish() }
+                else { write!(f,"None") }
+            }
+        }
+        writeln!(f,"{:>s$}: {:?}","suspended",SuspendedDebug(self),s=span)?;
+        write!(f,"}}")
+    }
 
     // TODO: what to do when all tasks are suspended.
     pub(crate) fn poll_internal(&mut self, cx: &mut Context<'_>) -> Poll<()> {
