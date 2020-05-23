@@ -24,7 +24,7 @@ async fn test_task(handle: WheelHandle){
         handle.spawn(SpawnParams::named("WT11"), waiting_task(handle.clone()));
         handle.spawn(SpawnParams::named("WT12"), waiting_task(handle.clone()));
     }
-    println!("Handle: {:?}",&handle);
+    println!("Handle: {:#?}",&handle);
     yield_once!();
     println!("Task [{}] point 2",handle.get_current_name().as_deref().unwrap_or(""));
     yield_once!();

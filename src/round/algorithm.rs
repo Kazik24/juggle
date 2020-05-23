@@ -7,8 +7,10 @@ use core::task::{Waker, Poll, Context};
 use crate::chunk_slab::ChunkSlab;
 use crate::round::handle::State;
 use std::ops::Deref;
-use std::fmt::{Formatter, Debug};
+use std::fmt::{Formatter, Debug, UpperHex};
 use std::mem::swap;
+use core::fmt::Result;
+use crate::WheelHandle;
 
 
 type TaskKey = usize;
@@ -114,14 +116,14 @@ impl SchedulerAlgorithm{
     pub(crate) fn get_dynamic(&self,key: TaskKey)->Option<&DynamicFuture>{ self.registry.get(key) }
     pub(crate) fn get_dynamic_mut(&mut self,key: TaskKey)->Option<&mut DynamicFuture>{ self.registry.get_mut(key) }
 
-    pub(crate) fn format_internal(&self, f: &mut Formatter<'_>,name: &str) -> core::fmt::Result {
+    pub(crate) fn format_internal(&self, f: &mut Formatter<'_>,name: &str) -> Result {
         pub(crate) struct DebugTask<'a>(
             &'a ChunkSlab<TaskKey,DynamicFuture>,
             Option<TaskKey>,
         );
 
         impl<'a> Debug for DebugTask<'a>{
-            fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result {
                 match self.1 {
                     Some(id) => {
                         if let Some(task) = self.0.get(id) {
@@ -157,7 +159,7 @@ impl SchedulerAlgorithm{
 
         struct WaitingDebug<'a>(&'a SchedulerAlgorithm);
         impl<'a> Debug for WaitingDebug<'a>{
-            fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result {
                 let buff = self.0.deferred.iter().map(|&k|DebugTask(&self.0.registry,Some(k)));
                 if self.0.deferred.is_empty() { write!(f,"None") }
                 else { f.debug_list().entries(buff).finish() }
@@ -167,7 +169,7 @@ impl SchedulerAlgorithm{
 
         struct SuspendedDebug<'a>(&'a SchedulerAlgorithm);
         impl<'a> Debug for SuspendedDebug<'a>{
-            fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result {
                 let mut buff = self.0.registry.iter().map(|(k,_)|DebugTask(&self.0.registry,Some(k)))
                     .filter(|t|{
                         match t.1.map(|id|t.0.get(id)).flatten() {
