@@ -146,13 +146,15 @@ impl SchedulerAlgorithm{
         struct RunnableDebug<'a>(&'a SchedulerAlgorithm);
         impl<'a> Debug for RunnableDebug<'a>{
             fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-                let mut buff0 = &self.0.runnable0;
-                let mut buff1 = &self.0.runnable1;
-                if self.0.which_buffer {swap(&mut buff0,&mut buff1);}
-                let buff0 = buff0.iter().map(|&k|DebugTask(&self.0.registry,Some(k)));
-                let buff1 = buff1.iter().map(|&k|DebugTask(&self.0.registry,Some(k)));
                 if self.0.runnable0.is_empty() && self.0.runnable1.is_empty() { write!(f,"None") }
-                else { f.debug_list().entries(buff0).entries(buff1).finish() }
+                else{
+                    let mut buff0 = &self.0.runnable0;
+                    let mut buff1 = &self.0.runnable1;
+                    if self.0.which_buffer {swap(&mut buff0,&mut buff1);}
+                    let buff0 = buff0.iter().map(|&k|DebugTask(&self.0.registry,Some(k)));
+                    let buff1 = buff1.iter().map(|&k|DebugTask(&self.0.registry,Some(k)));
+                    f.debug_list().entries(buff0).entries(buff1).finish()
+                }
             }
         }
         writeln!(f,"{:>s$}: {:?}","runnable",RunnableDebug(self),s=span)?;
