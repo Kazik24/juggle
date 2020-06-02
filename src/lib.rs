@@ -16,12 +16,14 @@ mod chunk_slab;
 mod yield_helper;
 mod load;
 mod timing;
+mod block;
 
 
 pub use self::yield_helper::Yield;
 pub use self::round::{Wheel, WheelHandle, LockedWheel, IdNum, SpawnParams, State};
 pub use self::load::*;
 pub use self::timing::*;
+pub use self::block::*;
 
 /// Yield current task. Gives the sheduler opportunity to switch to another task.
 ///
