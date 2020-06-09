@@ -8,8 +8,8 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use core::pin::Pin;
 use std::ops::Deref;
 
-pub(crate) struct DynamicFuture{ //not send not sync
-    pinned_future: NonNull<dyn Future<Output=()>>,
+pub(crate) struct DynamicFuture<'a>{ //not send not sync
+    pinned_future: NonNull<dyn Future<Output=()> + 'a>,
     flags: SyncFlags,
     name: TaskName,
     suspended: bool,
@@ -22,9 +22,9 @@ pub(crate) enum TaskName{
     None,
 }
 
-impl DynamicFuture{
+impl<'a> DynamicFuture<'a>{
     //safe
-    pub fn new_allocated(future: Pin<Box<dyn Future<Output=()>>>,
+    pub fn new_allocated(future: Pin<Box<dyn Future<Output=()> + 'a>>,
                          global: Arc<AtomicWakerRegistry>,suspended: bool)->Self{
         let ptr = unsafe{
             NonNull::new_unchecked(Box::into_raw(Pin::into_inner_unchecked(future)))
@@ -39,7 +39,7 @@ impl DynamicFuture{
     }
     //unsafe cause this future can be pinned as local variable on stack, and we erase its lifetime so
     //that that it need to be ensured that this object is not used after that variable gets dropped.
-    pub unsafe fn new_static(future: Pin<&mut (dyn Future<Output=()> + 'static)>,
+    pub unsafe fn new_static(future: Pin<&mut (dyn Future<Output=()> + 'a)>,
                              global: Arc<AtomicWakerRegistry>,suspended: bool)->Self{
         let ptr = NonNull::new_unchecked(Pin::into_inner_unchecked(future) as *mut _);
         Self{
@@ -72,7 +72,7 @@ impl DynamicFuture{
         future.poll(&mut Context::from_waker(self.flags.waker_ref()))
     }
 }
-impl Drop for DynamicFuture{
+impl<'a> Drop for DynamicFuture<'a>{
     fn drop(&mut self) {
         if !self.flags.is_static() {
             unsafe {
@@ -85,7 +85,10 @@ impl Drop for DynamicFuture{
 
 struct SyncFlags{
     flags: Arc<InnerSyncFlags>,
-    waker: Waker, //inline waker cause we want to avoid cloning
+    // inline waker cause we want to avoid cloning (optimally i would like this to be only field cause
+    // this waker is actually wrapped arc from above, but you cant access inner content of waker
+    // without using transmute, so i don't want to do that)
+    waker: Waker,
 }
 impl SyncFlags{
     fn new(is_static: bool,global: Arc<AtomicWakerRegistry>)->Self{

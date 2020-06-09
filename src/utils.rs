@@ -40,7 +40,7 @@ impl<T: DynamicWake + Send + Sync + 'static> Helper<T>{
     }
 }
 
-struct AtomicOptionBox<T>(AtomicPtr<T>);
+pub(crate) struct AtomicOptionBox<T>(AtomicPtr<T>);
 impl<T> AtomicOptionBox<T>{
     fn to_pointer(value: Option<Box<T>>)->*mut T{
         match value {

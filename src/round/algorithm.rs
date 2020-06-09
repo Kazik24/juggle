@@ -15,17 +15,18 @@ use crate::WheelHandle;
 
 type TaskKey = usize;
 
-pub(crate) struct SchedulerAlgorithm{
+pub(crate) struct SchedulerAlgorithm<'futures>{
     runnable0: VecDeque<TaskKey>,
     runnable1: VecDeque<TaskKey>,
     deferred: Vec<TaskKey>,
     last_waker: Arc<AtomicWakerRegistry>,
-    registry: ChunkSlab<TaskKey,DynamicFuture>,
+    registry: ChunkSlab<TaskKey,DynamicFuture<'futures>>,
+    suspended_count: usize,
     current: Option<TaskKey>,
     which_buffer: bool,
 }
 
-impl SchedulerAlgorithm{
+impl<'futures> SchedulerAlgorithm<'futures>{
     pub(crate) fn new()->Self{
         Self{
             runnable0: VecDeque::new(),
@@ -33,26 +34,29 @@ impl SchedulerAlgorithm{
             which_buffer: false,
             deferred: Vec::new(),
             last_waker: Arc::new(AtomicWakerRegistry::empty()),
+            suspended_count: 0,
             current: None,
             registry: ChunkSlab::new(),
         }
     }
     pub(crate) fn get_current(&self)->Option<TaskKey>{self.current}
     //safe to call from inside task
-    fn enqueue_runnable(&mut self,key: TaskKey){
+    fn enqueue_runnable(&mut self,key: TaskKey,check_absent: bool){
         if self.which_buffer { //if now 1 is executed then add to 0 and vice versa.
+            if check_absent && self.runnable0.contains(&key) { return }
             self.runnable0.push_back(key);
         } else {
+            if check_absent && self.runnable1.contains(&key) { return }
             self.runnable1.push_back(key);
         }
     }
     pub(crate) fn clone_registry(&self)->Arc<AtomicWakerRegistry>{self.last_waker.clone()}
     //safe to call from inside task
-    pub(crate) fn register(&mut self,dynamic: DynamicFuture)->TaskKey{
+    pub(crate) fn register(&mut self,dynamic: DynamicFuture<'futures>)->TaskKey{
         let suspended = dynamic.is_suspended();
         let key = self.registry.insert(dynamic); //won't realloc because it uses ChunkSlab
         if !suspended {
-            self.enqueue_runnable(key);
+            self.enqueue_runnable(key,false); //first ever enqueue of this task
         }
         key
     }
@@ -61,7 +65,10 @@ impl SchedulerAlgorithm{
         match self.registry.get_mut(key) {
             Some(task) if task.is_suspended() => {
                 task.set_suspended(false);
-                self.enqueue_runnable(key); //suspended task always has runnable state (for now)
+                self.suspended_count -= 1;
+                // suspended task always has runnable state (for now). Check if absent is needed cause
+                // some task might spam suspend-resume which will otherwise cause multiple enqueues.
+                self.enqueue_runnable(key,true);
                 true
             }
             _ => false,
@@ -71,12 +78,12 @@ impl SchedulerAlgorithm{
     //if rotate_once encounters suspended task, then it will be removed from queue
     pub(crate) fn suspend(&mut self,key: TaskKey)->bool{
         match self.registry.get_mut(key) {
-            Some(task) => {
-                let prev = task.is_suspended();
+            Some(task) if !task.is_suspended() => {
                 task.set_suspended(true);
-                !prev
+                self.suspended_count += 1;
+                true
             }
-            None => false,
+            _ => false,
         }
     }
 
@@ -94,12 +101,15 @@ impl SchedulerAlgorithm{
 
     pub(crate) fn cancel(&mut self,key: TaskKey)->bool{
         match self.registry.get_mut(key) {
-            Some(task) => {
-                let prev = task.is_cancelled();
+            Some(task) if !task.is_cancelled() => {
                 task.set_cancelled(true);
-                !prev
+                if task.is_suspended() {
+                    task.set_suspended(false);
+                    self.suspended_count -= 1;
+                }
+                true
             }
-            None => false,
+            _ => false,
         }
     }
     pub(crate) fn get_by_name(&self,name: &str)->Option<TaskKey>{
@@ -114,15 +124,15 @@ impl SchedulerAlgorithm{
     }
 
     pub(crate) fn get_dynamic(&self,key: TaskKey)->Option<&DynamicFuture>{ self.registry.get(key) }
-    pub(crate) fn get_dynamic_mut(&mut self,key: TaskKey)->Option<&mut DynamicFuture>{ self.registry.get_mut(key) }
+    pub(crate) fn get_dynamic_mut(&mut self,key: TaskKey)->Option<&mut DynamicFuture<'futures>>{ self.registry.get_mut(key) }
 
     pub(crate) fn format_internal(&self, f: &mut Formatter<'_>,name: &str) -> Result {
-        pub(crate) struct DebugTask<'a>(
-            &'a ChunkSlab<TaskKey,DynamicFuture>,
+        pub(crate) struct DebugTask<'a,'b>(
+            &'a ChunkSlab<TaskKey,DynamicFuture<'b>>,
             Option<TaskKey>,
         );
 
-        impl<'a> Debug for DebugTask<'a>{
+        impl<'a,'b> Debug for DebugTask<'a,'b>{
             fn fmt(&self, f: &mut Formatter<'_>) -> Result {
                 match self.1 {
                     Some(id) => {
@@ -143,8 +153,8 @@ impl SchedulerAlgorithm{
         let span = 10;
         writeln!(f,"{:>s$}: {:?}","current",DebugTask(&self.registry,self.current),s=span)?;
 
-        struct RunnableDebug<'a>(&'a SchedulerAlgorithm);
-        impl<'a> Debug for RunnableDebug<'a>{
+        struct RunnableDebug<'a,'b>(&'a SchedulerAlgorithm<'b>);
+        impl<'a,'b> Debug for RunnableDebug<'a,'b>{
             fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
                 if self.0.runnable0.is_empty() && self.0.runnable1.is_empty() { write!(f,"None") }
                 else{
@@ -159,8 +169,8 @@ impl SchedulerAlgorithm{
         }
         writeln!(f,"{:>s$}: {:?}","runnable",RunnableDebug(self),s=span)?;
 
-        struct WaitingDebug<'a>(&'a SchedulerAlgorithm);
-        impl<'a> Debug for WaitingDebug<'a>{
+        struct WaitingDebug<'a,'b>(&'a SchedulerAlgorithm<'b>);
+        impl<'a,'b> Debug for WaitingDebug<'a,'b>{
             fn fmt(&self, f: &mut Formatter<'_>) -> Result {
                 let buff = self.0.deferred.iter().map(|&k|DebugTask(&self.0.registry,Some(k)));
                 if self.0.deferred.is_empty() { write!(f,"None") }
@@ -169,8 +179,8 @@ impl SchedulerAlgorithm{
         }
         writeln!(f,"{:>s$}: {:?}","waiting",WaitingDebug(self),s=span)?;
 
-        struct SuspendedDebug<'a>(&'a SchedulerAlgorithm);
-        impl<'a> Debug for SuspendedDebug<'a>{
+        struct SuspendedDebug<'a,'b>(&'a SchedulerAlgorithm<'b>);
+        impl<'a,'b> Debug for SuspendedDebug<'a,'b>{
             fn fmt(&self, f: &mut Formatter<'_>) -> Result {
                 let mut buff = self.0.registry.iter().map(|(k,_)|DebugTask(&self.0.registry,Some(k)))
                     .filter(|t|{
@@ -188,7 +198,7 @@ impl SchedulerAlgorithm{
     }
 
     // TODO: what to do when all tasks are suspended.
-    pub(crate) fn poll_internal(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+    pub(crate) fn poll_internal(&mut self, cx: &mut Context<'_>) -> Poll<bool> {
         loop{
             self.last_waker.clear();//drop previous waker if any
             if self.which_buffer {
@@ -205,10 +215,11 @@ impl SchedulerAlgorithm{
             self.which_buffer = !self.which_buffer;
             if self.runnable0.is_empty() && self.runnable1.is_empty() && self.deferred.is_empty() {break;}
         }
-        Poll::Ready(()) //all tasks executed to finish
+        if self.suspended_count != 0 { Poll::Ready(false) } //all tasks are suspended
+        else { Poll::Ready(true) } //all tasks executed to finish
     }
 
-    fn beat_once(registry: &mut ChunkSlab<TaskKey,DynamicFuture>,
+    fn beat_once(registry: &mut ChunkSlab<TaskKey,DynamicFuture<'_>>,
                  from: &mut VecDeque<TaskKey>,to: &mut VecDeque<TaskKey>,
                  deferred: &mut Vec<TaskKey>,waker: &Waker,
                  last_waker: &AtomicWakerRegistry,current: &mut Option<TaskKey>)->bool{
@@ -230,7 +241,7 @@ impl SchedulerAlgorithm{
         false //can start new iteration
     }
 
-    fn rotate_once(registry: &mut ChunkSlab<TaskKey,DynamicFuture>,from: &mut VecDeque<TaskKey>,
+    fn rotate_once(registry: &mut ChunkSlab<TaskKey,DynamicFuture<'_>>,from: &mut VecDeque<TaskKey>,
                    to: &mut VecDeque<TaskKey>, deferred: &mut Vec<TaskKey>,
                    current: &mut Option<TaskKey>){
         struct Guard<'a>(&'a mut Option<TaskKey>);
@@ -264,7 +275,7 @@ impl SchedulerAlgorithm{
         }
     }
 
-    fn drain_runnable(registry: &mut ChunkSlab<TaskKey,DynamicFuture>,
+    fn drain_runnable(registry: &mut ChunkSlab<TaskKey,DynamicFuture<'_>>,
                       from: &mut Vec<TaskKey>,to: &mut VecDeque<TaskKey>)->bool{
         let prev = from.len();
         from.retain(|&elem|{

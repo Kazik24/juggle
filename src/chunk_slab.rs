@@ -94,7 +94,6 @@ impl<I: ChunkSlabKey,T> ChunkSlab<I,T>{
         self.next = I::zero();
     }
     pub fn len(&self)->usize{self.len}
-    pub fn contains(&self,key: I)->bool{ self.get(key).is_some() }
     pub fn get(&self,key: I)->Option<&T>{
         match self.entries.get(key.into_index() / CHUNK_SIZE) {
             Some(chunk) =>{
@@ -117,10 +116,21 @@ impl<I: ChunkSlabKey,T> ChunkSlab<I,T>{
             _ => None,
         }
     }
-    pub fn iter(& self)->impl Iterator<Item=(I,&T)>{
+    pub fn iter(&self)->impl Iterator<Item=(I,&T)>{
         self.entries.iter().enumerate().map(|e|{
             let off = e.0 * CHUNK_SIZE;
             e.1.data.iter().enumerate().map(move |e|(off+e.0,e.1))
+        }).flatten().filter_map(|e|{
+            match e.1 {
+                Entry::Full(v) => Some((I::from_index(e.0),v)),
+                Entry::Empty(_) => None,
+            }
+        })
+    }
+    pub fn iter_mut(&mut self)->impl Iterator<Item=(I,&mut T)>{
+        self.entries.iter_mut().enumerate().map(|e|{
+            let off = e.0 * CHUNK_SIZE;
+            e.1.data.iter_mut().enumerate().map(move |e|(off+e.0,e.1))
         }).flatten().filter_map(|e|{
             match e.1 {
                 Entry::Full(v) => Some((I::from_index(e.0),v)),

@@ -5,14 +5,14 @@ use std::task::{RawWakerVTable, RawWaker, Waker, Context, Poll};
 use std::ptr::null;
 use std::pin::Pin;
 
-pub trait Parker{
+pub(crate) trait Parker{
     /// Parks this thread is there is no token available, else returns immediately
     fn park(&self);
     /// Makes token available.
     fn unpark(&self);
 }
 
-pub struct SpinParker(AtomicBool);
+pub(crate) struct SpinParker(AtomicBool);
 
 impl Parker for SpinParker{
     fn park(&self) {

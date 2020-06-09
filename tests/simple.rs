@@ -3,7 +3,7 @@ use std::time::Duration;
 use rand::Rng;
 
 
-async fn waiting_task(handle: WheelHandle){
+async fn waiting_task(handle: WheelHandle<'_>){
     println!("Wait Task [{}] enter",handle.get_current_name().as_deref().unwrap_or(""));
     for i in 1..20 {
         let dur = Duration::from_millis(rand::thread_rng().gen_range(10,20));
@@ -15,7 +15,7 @@ async fn waiting_task(handle: WheelHandle){
     println!("Wait Task [{}] exit",handle.get_current_name().as_deref().unwrap_or(""));
 }
 
-async fn test_task(handle: WheelHandle){
+async fn test_task(handle: WheelHandle<'_>){
     println!("Task [{}] enter",handle.get_current_name().as_deref().unwrap_or(""));
     yield_once!();
     println!("Task [{}] point 1",handle.get_current_name().as_deref().unwrap_or(""));

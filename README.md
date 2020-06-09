@@ -19,7 +19,7 @@ use alloc::collections::VecDeque;
 use alloc::rc::Rc;
 use core::cell::RefCell;
 
-async fn collect_temperature(queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle){
+async fn collect_temperature(queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle<'_>){
     loop{ // loop forever or until cancelled
         let temperature: i32 = read_temperature_sensor().await;
         queue.borrow_mut().push_back(temperature);
@@ -27,7 +27,7 @@ async fn collect_temperature(queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHand
     }
 }
 
-async fn wait_for_timer(id: IdNum,queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle){
+async fn wait_for_timer(id: IdNum,queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle<'_>){
     init_timer();
     for _ in 0..5 {
         yield_until!(get_timer_value() >= 200); // busy wait but also executes other tasks.
@@ -49,6 +49,6 @@ fn main(){
                  wait_for_timer(temp_id.unwrap(),queue.clone(),handle.clone()));
 
     // execute tasks
-    smol::block_on(wheel); // or any other utility to block on future.
+    smol::block_on(wheel).unwrap(); // or any other utility to block on future.
 }
  ```

@@ -20,7 +20,7 @@ mod block;
 
 
 pub use self::yield_helper::Yield;
-pub use self::round::{Wheel, WheelHandle, LockedWheel, IdNum, SpawnParams, State};
+pub use self::round::{Wheel, WheelHandle, LockedWheel, IdNum, SpawnParams, State, SuspendError};
 pub use self::load::*;
 pub use self::timing::*;
 pub use self::block::*;

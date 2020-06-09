@@ -5,10 +5,12 @@ use super::handle::*;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::*;
+use crate::round::dyn_future::DynamicFuture;
+use std::fmt::{Display, Formatter};
+use std::error::Error;
 
 
-
-/// Single-thread async task scheduler with dynamic task spawning and cancelling.
+/// Single-thread async task scheduler with dynamic task state control.
 ///
 /// This structure is useful when you want to divide single thread to share processing power among
 /// multiple task without preemption.
@@ -37,7 +39,7 @@ use core::task::*;
 /// # fn process_data(queue: &mut VecDeque<i32>){
 /// #     while let Some(_) = queue.pop_front() { }
 /// # }
-/// async fn collect_temperature(queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle){
+/// async fn collect_temperature(queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle<'_>){
 ///     loop{ // loop forever or until cancelled
 ///         let temperature: i32 = read_temperature_sensor().await;
 ///         queue.borrow_mut().push_back(temperature);
@@ -45,7 +47,7 @@ use core::task::*;
 ///     }
 /// }
 ///
-/// async fn wait_for_timer(id: IdNum,queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle){
+/// async fn wait_for_timer(id: IdNum,queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle<'_>){
 ///     init_timer();
 ///     for _ in 0..5 {
 ///         yield_until!(get_timer_value() >= 200); // busy wait but also executes other tasks.
@@ -67,30 +69,30 @@ use core::task::*;
 ///                  wait_for_timer(temp_id.unwrap(),queue.clone(),handle.clone()));
 ///
 ///     // execute tasks
-///     smol::block_on(wheel); // or any other utility to block on future.
+///     smol::block_on(wheel).unwrap(); // or any other utility to block on future.
 /// }
 /// ```
-pub struct Wheel{
-    ptr: Rc<UnsafeCell<SchedulerAlgorithm>>,
-    handle: WheelHandle,
+pub struct Wheel<'futures>{
+    ptr: Rc<UnsafeCell<SchedulerAlgorithm<'futures>>>,
+    handle: WheelHandle<'futures>,
 }
 /// Same as Wheel except that it has fixed content and there is no way to control state of tasks
 /// within it.
 /// [see] Wheel
-pub struct LockedWheel{
-    alg: SchedulerAlgorithm,
+pub struct LockedWheel<'futures>{
+    alg: SchedulerAlgorithm<'futures>,
 }
 
-impl Wheel{
+impl<'futures> Wheel<'futures>{
     pub fn new()->Self{
-        let ptr = Rc::new(UnsafeCell::new(SchedulerAlgorithm::new()));
+        let ptr = Rc::new(UnsafeCell::new(SchedulerAlgorithm::<'futures>::new()));
         let handle = WheelHandle::new(Rc::downgrade(&ptr));
         Self{ptr,handle}
     }
 
-    pub fn handle(&self)->&WheelHandle{&self.handle}
+    pub fn handle(&self)->&WheelHandle<'futures>{&self.handle}
 
-    pub fn lock(self)->LockedWheel{
+    pub fn lock(self)->LockedWheel<'futures>{
         // no panic cause rc has always strong count of 1 (it can have strong count > 1 during calls
         // on handle, but if these calls return then it will be back to 1)
         let alg = Rc::try_unwrap(self.ptr).ok().unwrap().into_inner();
@@ -98,8 +100,8 @@ impl Wheel{
     }
 }
 
-impl LockedWheel{
-    pub fn unlock(self)->Wheel{
+impl<'futures> LockedWheel<'futures>{
+    pub fn unlock(self)->Wheel<'futures>{
         let ptr = Rc::new(UnsafeCell::new(self.alg));
         let handle = WheelHandle::new(Rc::downgrade(&ptr));
         Wheel{ptr,handle}
@@ -107,16 +109,24 @@ impl LockedWheel{
 }
 
 
-impl Future for Wheel{
-    type Output = ();
+impl<'futures> Future for Wheel<'futures>{
+    type Output = Result<(),SuspendError>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        unsafe{&mut *self.as_mut().ptr.get() }.poll_internal(cx)
+        unsafe{&mut *self.as_mut().ptr.get() }.poll_internal(cx).map(|flag| if flag { Ok(()) } else { Err(SuspendError) })
     }
 }
 
-impl Future for LockedWheel{
-    type Output = ();
+impl<'futures> Future for LockedWheel<'futures>{
+    type Output = Result<(),SuspendError>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.as_mut().alg.poll_internal(cx)
+        self.as_mut().alg.poll_internal(cx).map(|flag| if flag { Ok(()) } else { Err(SuspendError) })
+    }
+}
+
+#[derive(Copy,Clone,Eq,PartialEq,Hash,Debug)]
+pub struct SuspendError;
+impl Display for SuspendError{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.write_str("All tasks were suspended.")
     }
 }

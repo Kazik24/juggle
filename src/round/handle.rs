@@ -7,10 +7,11 @@ use core::future::Future;
 use core::pin::Pin;
 use crate::round::dyn_future::{DynamicFuture, TaskName};
 use core::fmt::{Debug, Formatter};
+use crate::Wheel;
 
 #[derive(Clone)]
-pub struct WheelHandle{
-    ptr: Weak<UnsafeCell<SchedulerAlgorithm>>,
+pub struct WheelHandle<'futures>{
+    ptr: Weak<UnsafeCell<SchedulerAlgorithm<'futures>>>,
 }
 
 #[derive(Copy,Clone,Eq,PartialEq,Ord,PartialOrd,Hash)]
@@ -50,18 +51,14 @@ macro_rules! unwrap_weak{
     }
 }
 
-impl WheelHandle{
-    pub(crate) fn new(ptr: Weak<UnsafeCell<SchedulerAlgorithm>>)->Self{ Self{ptr} }
+impl<'futures> WheelHandle<'futures>{
+    pub(crate) fn new(ptr: Weak<UnsafeCell<SchedulerAlgorithm<'futures>>>)->Self{ Self{ptr} }
     pub fn is_valid(&self)->bool{ self.ptr.strong_count() != 0 }
 
-    pub fn spawn<F>(&self, params: impl Into<SpawnParams>, future: F) ->Option<IdNum> where F: Future<Output=()> + 'static{
-        unwrap_weak!(self,this,None);
-        let params = params.into();
-        let mut dynamic = DynamicFuture::new_allocated(Box::pin(future),this.clone_registry(),params.suspended);
-        dynamic.set_name(params.name);
-        Some(IdNum(this.register(dynamic) as usize))
+    pub fn spawn<F>(&self, params: impl Into<SpawnParams>, future: F) ->Option<IdNum> where F: Future<Output=()> + 'futures{
+        self.spawn_dyn(params,Box::pin(future))
     }
-    pub fn spawn_dyn(&self, params: impl Into<SpawnParams>, future: Pin<Box<dyn Future<Output=()> + 'static>>) ->Option<IdNum>{
+    pub fn spawn_dyn(&self, params: impl Into<SpawnParams>, future: Pin<Box<dyn Future<Output=()> + 'futures>>) ->Option<IdNum>{
         unwrap_weak!(self,this,None);
         let params = params.into();
         let mut dynamic = DynamicFuture::new_allocated(future,this.clone_registry(),params.suspended);
@@ -113,7 +110,7 @@ impl WheelHandle{
         todo!()
     }
 
-    fn unchecked_mut(rc: &Rc<UnsafeCell<SchedulerAlgorithm>>)->&mut SchedulerAlgorithm{
+    fn unchecked_mut<'a>(rc: &'a Rc<UnsafeCell<SchedulerAlgorithm<'futures>>>)->&'a mut SchedulerAlgorithm<'futures>{
         unsafe{ &mut *rc.get() }
     }
 
@@ -127,7 +124,7 @@ impl WheelHandle{
     }
 }
 
-impl Debug for WheelHandle{
+impl<'futures> Debug for WheelHandle<'futures>{
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         self.fmt_name(f,"WheelHandle")
     }
