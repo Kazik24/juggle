@@ -21,7 +21,7 @@ impl Debug for IdNum {
         write!(f,"TaskId[0x{:X}]",self.0)
     }
 }
-#[derive(Clone,Eq,PartialEq,Hash)]
+#[derive(Clone,Eq,PartialEq,Hash,Debug)]
 pub struct SpawnParams {
     suspended: bool,
     name: TaskName,

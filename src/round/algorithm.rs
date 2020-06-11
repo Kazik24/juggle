@@ -55,7 +55,9 @@ impl<'futures> SchedulerAlgorithm<'futures>{
     pub(crate) fn register(&mut self,dynamic: DynamicFuture<'futures>)->TaskKey{
         let suspended = dynamic.is_suspended();
         let key = self.registry.insert(dynamic); //won't realloc because it uses ChunkSlab
-        if !suspended {
+        if suspended {
+            self.suspended_count += 1; //increase count cause added task was suspended
+        } else {
             self.enqueue_runnable(key,false); //first ever enqueue of this task
         }
         key
