@@ -72,7 +72,7 @@ impl<I: Timing> TimingGroup<I>{
         let min_time = self.info.iter().map(|(_,v)|Self::get_proportional(v)).min().unwrap();
         if min_time != I::Duration::default() && false{
             self.max = self.max - min_time;
-            for (k,entry) in self.info.iter_mut() { //offset all by disproportion
+            for (_,entry) in self.info.iter_mut() { //offset all by disproportion
                 entry.sum = entry.sum - I::mul_duration(min_time,entry.proportion);
             }
         }

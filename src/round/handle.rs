@@ -37,7 +37,7 @@ pub enum State {
     Waiting,
     /// Task is cancelled but was not removed form scheduler yet.
     Cancelled,
-    /// Given key has no associated task with it.
+    /// Given key has no associated task with it, or handle used to obtain state was invalid.
     Unknown,
 }
 
@@ -53,11 +53,38 @@ macro_rules! unwrap_weak{
 
 impl<'futures> WheelHandle<'futures>{
     pub(crate) fn new(ptr: Weak<UnsafeCell<SchedulerAlgorithm<'futures>>>)->Self{ Self{ptr} }
+
+
+    /// Checks if this handle is valid.
+    ///
+    /// This method returns true if specific handle is valid and false otherwise. If handle is valid
+    /// it means that it can be used to control tasks in [Wheel] associated with it. Handle is valid
+    /// until associated wheel is dropped or locked.
+    ///
+    /// # Examples
+    /// ```
+    /// use juggle::*;
+    /// let wheel = Wheel::new();
+    /// let handle = wheel.handle().clone();
+    ///
+    /// assert!(handle.is_valid()); // Ok, useful handle.
+    /// drop(wheel);
+    /// assert!(!handle.is_valid()); // Handle can no longer be used to control Wheel.
+    /// ```
     pub fn is_valid(&self)->bool{ self.ptr.strong_count() != 0 }
 
+    /// Create new task and obtain its id.
+    ///
+    /// # Arguments
+    /// * `params` - Task creation parameters. Using default will spawn runnable task without name.
+    /// * `future` - The future you want to schedule.
+    /// Allocates new task inside associated [Wheel]. You can specify creation parameters of this task.
+    ///
+    /// Returns id of newly allocated task or None if this handle is invalid.
     pub fn spawn<F>(&self, params: impl Into<SpawnParams>, future: F) ->Option<IdNum> where F: Future<Output=()> + 'futures{
         self.spawn_dyn(params,Box::pin(future))
     }
+
     pub fn spawn_dyn(&self, params: impl Into<SpawnParams>, future: Pin<Box<dyn Future<Output=()> + 'futures>>) ->Option<IdNum>{
         unwrap_weak!(self,this,None);
         let params = params.into();

@@ -8,7 +8,6 @@ use core::ops::{Deref, Mul};
 use std::marker::PhantomData;
 use crate::timing::{StdTiming, Timing};
 use crate::chunk_slab::ChunkSlab;
-use std::cmp::{max, min};
 use crate::TimingGroup;
 
 

@@ -1,9 +1,8 @@
 use juggle::*;
 use std::sync::atomic::*;
 use std::time::{Instant, Duration};
-use std::thread::{sleep, spawn, Builder};
+use std::thread::sleep;
 use rand::Rng;
-use std::sync::Mutex;
 
 fn long_operation(milis: u64)->u64{
     let start = Instant::now();
@@ -43,7 +42,7 @@ fn load_balance_tasks(total: u64,presets: &[(u8,fn(usize)->u64)])->Vec<u64>{
         ids.insert(0,last.unwrap());
         handle.spawn(SpawnParams::default(),control_task(handle.clone(),ids,total));
 
-        smol::block_on(wheel);
+        smol::block_on(wheel).unwrap();
     }
     results.iter().map(|a|a.load(Ordering::Relaxed)).collect()
 }

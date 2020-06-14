@@ -1,6 +1,5 @@
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
-use crate::utils::to_waker;
 use std::task::{RawWakerVTable, RawWaker, Waker, Context, Poll};
 use std::ptr::null;
 use std::pin::Pin;
