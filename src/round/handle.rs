@@ -7,7 +7,6 @@ use core::future::Future;
 use core::pin::Pin;
 use crate::round::dyn_future::{DynamicFuture, TaskName};
 use core::fmt::{Debug, Formatter};
-use crate::Wheel;
 
 #[derive(Clone)]
 pub struct WheelHandle<'futures>{
@@ -26,6 +25,8 @@ pub struct SpawnParams {
     suspended: bool,
     name: TaskName,
 }
+
+/// Represents state of a task.
 #[derive(Copy,Clone,Eq,PartialEq,Ord,PartialOrd,Hash,Debug)]
 #[repr(u8)]
 pub enum State {
@@ -58,8 +59,9 @@ impl<'futures> WheelHandle<'futures>{
     /// Checks if this handle is valid.
     ///
     /// This method returns true if specific handle is valid and false otherwise. If handle is valid
-    /// it means that it can be used to control tasks in [Wheel] associated with it. Handle is valid
-    /// until associated wheel is dropped or locked.
+    /// it means that it can be used to control tasks in [Wheel](struct.Wheel.html) associated with
+    /// it. Handle is valid until associated wheel is dropped or
+    /// [`locked`](struct.Wheel.html#method.lock).
     ///
     /// # Examples
     /// ```
@@ -78,7 +80,8 @@ impl<'futures> WheelHandle<'futures>{
     /// # Arguments
     /// * `params` - Task creation parameters. Using default will spawn runnable task without name.
     /// * `future` - The future you want to schedule.
-    /// Allocates new task inside associated [Wheel]. You can specify creation parameters of this task.
+    /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
+    /// parameters of this task.
     ///
     /// Returns id of newly allocated task or None if this handle is invalid.
     pub fn spawn<F>(&self, params: impl Into<SpawnParams>, future: F) ->Option<IdNum> where F: Future<Output=()> + 'futures{
@@ -93,22 +96,44 @@ impl<'futures> WheelHandle<'futures>{
         Some(IdNum(this.register(dynamic) as usize))
     }
 
+    /// Cancel task with given id.
+    ///
+    /// If task is already executing then it will remove if when next yield occurs.
     pub fn cancel(&self, id: IdNum) ->bool{
         unwrap_weak!(self,this,false);
         this.cancel(id.0)
     }
+    /// Suspend task with given id.
     pub fn suspend(&self, id: IdNum) ->bool{
         unwrap_weak!(self,this,false);
         this.suspend(id.0)
     }
+    /// Resume task with given id.
     pub fn resume(&self, id: IdNum) ->bool{
         unwrap_weak!(self,this,false);
         this.resume(id.0)
     }
+    /// Returns state of task with given id.
+    ///
+    /// For more information about allowed states see [State](enum.State.html)
+    ///
+    /// # Examples
+    /// ```
+    /// use juggle::*;
+    ///
+    /// let wheel = Wheel::new();
+    /// let id1 = wheel.handle().spawn(SpawnParams::default(),async move {/*...*/}).unwrap();
+    /// let id2 = wheel.handle().spawn(SpawnParams::suspended(true),async move {/*...*/}).unwrap();
+    ///
+    /// assert_eq!(wheel.handle().get_state(id1),State::Runnable);
+    /// assert_eq!(wheel.handle().get_state(id2),State::Suspended);
+    /// ```
     pub fn get_state(&self, id: IdNum) -> State {
         unwrap_weak!(self,this,State::Unknown);
         this.get_state(id.0)
     }
+    /// Returns id of currently executing task, or None if not called inside task or this handle is
+    /// invalid.
     pub fn current(&self) ->Option<IdNum>{
         unwrap_weak!(self,this,None);
         this.get_current().map(|t| IdNum(t))

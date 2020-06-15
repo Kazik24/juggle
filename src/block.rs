@@ -1,8 +1,8 @@
-use std::future::Future;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::task::{RawWakerVTable, RawWaker, Waker, Context, Poll};
-use std::ptr::null;
-use std::pin::Pin;
+use core::future::Future;
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::task::{RawWakerVTable, RawWaker, Waker, Context, Poll};
+use core::ptr::null;
+use core::pin::Pin;
 
 pub(crate) trait Parker{
     /// Parks this thread is there is no token available, else returns immediately
@@ -71,6 +71,6 @@ pub fn spin_block_on<F>(mut future: F)->F::Output where F:Future{
     }
 }
 
-fn noop_clone(ptr: *const ()) -> RawWaker{ RawWaker::new(null(),&NOOP_VTABLE) }
-fn noop_dummy(ptr: *const ()) {}
+fn noop_clone(_: *const ()) -> RawWaker{ RawWaker::new(null(),&NOOP_VTABLE) }
+fn noop_dummy(_: *const ()) {}
 static NOOP_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone,noop_dummy,noop_dummy,noop_dummy);

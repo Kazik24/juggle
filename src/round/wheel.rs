@@ -5,9 +5,7 @@ use super::handle::*;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::*;
-use crate::round::dyn_future::DynamicFuture;
-use std::fmt::{Display, Formatter};
-use std::error::Error;
+use core::fmt::{Display, Formatter};
 
 
 /// Single-thread async task scheduler with dynamic task state control.
@@ -19,14 +17,14 @@ use std::error::Error;
 ///
 /// # Managing tasks
 /// You can spawn/suspend/resume/cancel any task as long as you have it's key, and handle to this
-/// scheduler. Handle can be obtained from this object using method `handle(&self)`
+/// scheduler. Handle can be obtained from this object using method [`handle(&self)`][handle].
 ///
+/// [handle]: #method.handle
 /// # Examples
 /// ```
 /// # extern crate alloc;
 /// use juggle::*;
 /// use alloc::collections::VecDeque;
-/// use alloc::rc::Rc;
 /// use core::cell::RefCell;
 ///
 /// # use core::sync::atomic::*;
@@ -39,7 +37,7 @@ use std::error::Error;
 /// # fn process_data(queue: &mut VecDeque<i32>){
 /// #     while let Some(_) = queue.pop_front() { }
 /// # }
-/// async fn collect_temperature(queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle<'_>){
+/// async fn collect_temperature(queue: &RefCell<VecDeque<i32>>,handle: WheelHandle<'_>){
 ///     loop{ // loop forever or until cancelled
 ///         let temperature: i32 = read_temperature_sensor().await;
 ///         queue.borrow_mut().push_back(temperature);
@@ -47,7 +45,7 @@ use std::error::Error;
 ///     }
 /// }
 ///
-/// async fn wait_for_timer(id: IdNum,queue: Rc<RefCell<VecDeque<i32>>>,handle: WheelHandle<'_>){
+/// async fn wait_for_timer(id: IdNum,queue: &RefCell<VecDeque<i32>>,handle: WheelHandle<'_>){
 ///     init_timer();
 ///     for _ in 0..5 {
 ///         yield_until!(get_timer_value() >= 200); // busy wait but also executes other tasks.
@@ -59,14 +57,14 @@ use std::error::Error;
 /// }
 ///
 /// fn main(){
+///     let queue = &RefCell::new(VecDeque::new());
 ///     let wheel = Wheel::new();
 ///     let handle = wheel.handle(); // handle to manage tasks, can be cloned inside this thread
-///     let queue = Rc::new(RefCell::new(VecDeque::new()));
 ///
 ///     let temp_id = handle.spawn(SpawnParams::default(),
-///                                collect_temperature(queue.clone(),handle.clone()));
+///                                collect_temperature(queue,handle.clone()));
 ///     handle.spawn(SpawnParams::default(),
-///                  wait_for_timer(temp_id.unwrap(),queue.clone(),handle.clone()));
+///                  wait_for_timer(temp_id.unwrap(),queue,handle.clone()));
 ///
 ///     // execute tasks
 ///     smol::block_on(wheel).unwrap(); // or any other utility to block on future.
@@ -76,22 +74,30 @@ pub struct Wheel<'futures>{
     ptr: Rc<UnsafeCell<SchedulerAlgorithm<'futures>>>,
     handle: WheelHandle<'futures>,
 }
-/// Same as Wheel except that it has fixed content and there is no way to control state of tasks
-/// within it.
-/// [see] Wheel
+/// Same as [Wheel](struct.Wheel.html) except that it has fixed content and there is no way to
+/// control state of tasks within it.
 pub struct LockedWheel<'futures>{
     alg: SchedulerAlgorithm<'futures>,
 }
 
 impl<'futures> Wheel<'futures>{
+    /// Create new instance
     pub fn new()->Self{
         let ptr = Rc::new(UnsafeCell::new(SchedulerAlgorithm::<'futures>::new()));
         let handle = WheelHandle::new(Rc::downgrade(&ptr));
         Self{ptr,handle}
     }
 
+    /// Obtain reference to handle that is used to spawn/control tasks.
+    ///
+    /// Handle can be cloned inside this thread which is ensured because
+    /// [WheelHandle](struct.WheelHandle.html) is not Send and not Sync.
     pub fn handle(&self)->&WheelHandle<'futures>{&self.handle}
 
+    /// Lock this wheel preventing all handles from affecting the tasks.
+    ///
+    /// Transforms this instance into [LockedWheel](struct.LockedWheel.html) which is similar to
+    /// [Wheel](struct.Wheel.html) but has no way of controlling tasks within it.
     pub fn lock(self)->LockedWheel<'futures>{
         // no panic cause rc has always strong count of 1 (it can have strong count > 1 during calls
         // on handle, but if these calls return then it will be back to 1)
@@ -101,6 +107,11 @@ impl<'futures> Wheel<'futures>{
 }
 
 impl<'futures> LockedWheel<'futures>{
+    /// Unlock this wheel so that a handle can be obtained and used to spawn or control tasks.
+    ///
+    /// Transforms this instance back to [Wheel](struct.Wheel.html)
+    /// Note that if handles that were invalidated after this wheel was locked will not be valid
+    /// again after calling this method, new [`handle`](struct.Wheel.html#method.handle) should be obtained.
     pub fn unlock(self)->Wheel<'futures>{
         let ptr = Rc::new(UnsafeCell::new(self.alg));
         let handle = WheelHandle::new(Rc::downgrade(&ptr));

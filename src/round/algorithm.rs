@@ -6,11 +6,10 @@ use crate::utils::AtomicWakerRegistry;
 use core::task::{Waker, Poll, Context};
 use crate::chunk_slab::ChunkSlab;
 use crate::round::handle::State;
-use std::ops::Deref;
-use std::fmt::{Formatter, Debug, UpperHex};
-use std::mem::swap;
+use core::ops::Deref;
+use core::fmt::{Formatter, Debug};
+use core::mem::swap;
 use core::fmt::Result;
-use crate::WheelHandle;
 
 
 type TaskKey = usize;

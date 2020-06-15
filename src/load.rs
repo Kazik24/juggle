@@ -2,12 +2,8 @@ use core::future::Future;
 use core::task::{Context, Poll};
 use core::pin::Pin;
 use alloc::rc::Rc;
-use std::time::{Duration, Instant};
 use core::cell::RefCell;
-use core::ops::{Deref, Mul};
-use std::marker::PhantomData;
 use crate::timing::{StdTiming, Timing};
-use crate::chunk_slab::ChunkSlab;
 use crate::TimingGroup;
 
 
