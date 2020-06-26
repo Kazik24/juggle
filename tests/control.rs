@@ -125,7 +125,7 @@ fn signal_after(dur: Duration)-> impl Future<Output=()>{
 
 #[test]
 fn test_suspend_error(){
-    let assert_flags: &Cell<[bool]> = &Cell::new([false; 3]);
+    let assert_flags = &vec![Cell::new(false); 3];
 
     let wheel = Wheel::new();
 
@@ -156,17 +156,17 @@ fn test_suspend_error(){
         let new_id = h.spawn(SpawnParams::default(),async move{
             yield_once!();
             assert_eq!(hdl.get_state(id),State::Unknown);
-            assert_flags.as_slice_of_cells()[1].set(true);
+            assert_flags[1].set(true);
         }).unwrap();
         assert_ne!(new_id,id);
-        assert_flags.as_slice_of_cells()[0].set(true);
+        assert_flags[0].set(true);
         yield_once!();
         unreachable!();
     });
-    assert_flags.as_slice_of_cells()[2].set(true);
+    assert_flags[2].set(true);
     // all tasks should eventually be suspended and error should be raised cause it's not possible
     // to change state of any task because wheel can be controlled ony inside this thread.
     smol::block_on(wheel).expect_err("Error was expected instead of success.");
     //assert all critical points were reached
-    assert_flags.as_slice_of_cells().iter().for_each(|c|assert!(c.get()));
+    assert_flags.iter().for_each(|c|assert!(c.get()));
 }

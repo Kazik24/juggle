@@ -13,11 +13,24 @@ pub struct WheelHandle<'futures>{
     ptr: Weak<UnsafeCell<SchedulerAlgorithm<'futures>>>,
 }
 
+/// Represents identifier of task registered by [WheelHandle](struct.WheelHandle.html).
+///
+/// Identifiers are only valid when distinguishing tasks registered inside the same
+/// [Wheel](struct.Wheel.html). Two different wheels can have tasks with the same identifiers.
 #[derive(Copy,Clone,Eq,PartialEq,Ord,PartialOrd,Hash)]
-pub struct IdNum(usize);
+pub struct IdNum(core::num::NonZeroUsize);
+
+impl IdNum{
+    fn from_usize(v: usize)->Self{
+        Self(unsafe{ core::num::NonZeroUsize::new_unchecked(v + 1) })
+    }
+    fn to_usize(self)->usize{
+        self.0.get() - 1
+    }
+}
 impl Debug for IdNum {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f,"TaskId[0x{:X}]",self.0)
+        write!(f,"IdNum[0x{:X}]",self.0.get() - 1)
     }
 }
 #[derive(Clone,Eq,PartialEq,Hash,Debug)]
@@ -75,6 +88,27 @@ impl<'futures> WheelHandle<'futures>{
     /// ```
     pub fn is_valid(&self)->bool{ self.ptr.strong_count() != 0 }
 
+    /// Checks if this and the other handle reference the same [Wheel](struct.Wheel.html).
+    ///
+    /// # Examples
+    /// ```
+    /// use juggle::*;
+    /// let wheel = Wheel::new();
+    /// let wheel2 = Wheel::new();
+    ///
+    /// let h1 = wheel.handle();
+    /// let h2 = h1.clone();
+    /// let other = wheel2.handle();
+    ///
+    /// assert!(h1.is_same(&h2));
+    /// assert!(!h1.is_same(&other));
+    /// ```
+    pub fn is_same(&self,other: &WheelHandle<'_>)->bool{
+        let p1 = self.ptr.as_ptr() as *const ();
+        let p2 = other.ptr.as_ptr() as *const ();
+        p1 == p2
+    }
+
     /// Create new task and obtain its id.
     ///
     /// # Arguments
@@ -83,17 +117,26 @@ impl<'futures> WheelHandle<'futures>{
     /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
     /// parameters of this task.
     ///
-    /// Returns id of newly allocated task or None if this handle is invalid.
+    /// Returns identifier of newly allocated task or None if this handle is invalid.
     pub fn spawn<F>(&self, params: impl Into<SpawnParams>, future: F) ->Option<IdNum> where F: Future<Output=()> + 'futures{
         self.spawn_dyn(params,Box::pin(future))
     }
 
+    /// Create new task from boxed future and obtain its id.
+    ///
+    /// # Arguments
+    /// * `params` - Task creation parameters. Using default will spawn runnable task without name.
+    /// * `future` - Boxed future you want to schedule.
+    /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
+    /// parameters of this task.
+    ///
+    /// Returns identifier of newly allocated task or None if this handle is invalid.
     pub fn spawn_dyn(&self, params: impl Into<SpawnParams>, future: Pin<Box<dyn Future<Output=()> + 'futures>>) ->Option<IdNum>{
         unwrap_weak!(self,this,None);
         let params = params.into();
         let mut dynamic = DynamicFuture::new_allocated(future,this.clone_registry(),params.suspended);
         dynamic.set_name(params.name);
-        Some(IdNum(this.register(dynamic) as usize))
+        Some(IdNum::from_usize(this.register(dynamic) as usize))
     }
 
     /// Cancel task with given id.
@@ -101,20 +144,22 @@ impl<'futures> WheelHandle<'futures>{
     /// If task is already executing then it will remove if when next yield occurs.
     pub fn cancel(&self, id: IdNum) ->bool{
         unwrap_weak!(self,this,false);
-        this.cancel(id.0)
+        this.cancel(id.to_usize())
     }
     /// Suspend task with given id.
     pub fn suspend(&self, id: IdNum) ->bool{
         unwrap_weak!(self,this,false);
-        this.suspend(id.0)
+        this.suspend(id.to_usize())
     }
     /// Resume task with given id.
     pub fn resume(&self, id: IdNum) ->bool{
         unwrap_weak!(self,this,false);
-        this.resume(id.0)
+        this.resume(id.to_usize())
     }
-    /// Returns state of task with given id.
+    /// Get state of task with given id.
     ///
+    /// If this handle is [`invalid`](#method.is_valid) then returns
+    /// [`State::Unknown`](enum.State.html#variant.Unknown).
     /// For more information about allowed states see [State](enum.State.html)
     ///
     /// # Examples
@@ -130,31 +175,52 @@ impl<'futures> WheelHandle<'futures>{
     /// ```
     pub fn get_state(&self, id: IdNum) -> State {
         unwrap_weak!(self,this,State::Unknown);
-        this.get_state(id.0)
+        this.get_state(id.to_usize())
     }
-    /// Returns id of currently executing task, or None if not called inside task or this handle is
-    /// invalid.
+    /// Get id of currently executing task.
+    ///
+    /// Returns None when:
+    /// * Not called inside task.
+    /// * Handle is [`invalid`](#method.is_valid).
     pub fn current(&self) ->Option<IdNum>{
         unwrap_weak!(self,this,None);
-        this.get_current().map(|t| IdNum(t))
+        this.get_current().map(|t| IdNum::from_usize(t))
     }
+
+    /// Applies given function on reference to given task name.
+    ///
+    /// Function argument is a name of task with specified id or None if task has no name, given
+    /// id has no assigned task or this handle is invalid. Returns result of function call.
     pub fn with_name<F,T>(&self, id: IdNum, func: F) ->T where F: FnOnce(Option<&str>)->T{
         unwrap_weak!(self,this,func(None));
-        match this.get_dynamic(id.0) {
-            Some(v) => match v.get_name() {
-                TaskName::Static(s) => func(Some(s)),
-                TaskName::Dynamic(d) => func(Some(&d)),
-                TaskName::None => func(None),
+        match this.get_dynamic(id.to_usize()) {
+            Some(v) => match v.get_name_str() {
+                Some(s) => return func(Some(s)),
+                None => {},
             }
-            None => func(None),
+            None => {},
         }
+        func(None)
     }
+    /// Returns name of current task as new String.
+    /// Returns None when:
+    /// * Task is unnamed.
+    /// * This method was not called inside task.
+    /// * Handle is [`invalid`](#method.is_valid).
+    ///
+    /// Note that this method allocates new string. If you don't want to allocate temporary memory
+    /// for string use [`with_name`](#method.with_name)
     pub fn get_current_name(&self)->Option<String>{
-        self.current().map(|id|self.with_name(id, |s|s.map(|s|s.to_string()).unwrap_or(String::new())))
+        self.current().map(|id|self.with_name(id, |s|s.map(|s|s.to_string()).unwrap()))
     }
+    /// Find task id that has name equal to given argument.
+    ///
+    /// Returns None when:
+    /// * Task was not found.
+    /// * Handle is [`invalid`](#method.is_valid).
     pub fn get_by_name(&self,name: &str)->Option<IdNum>{
         unwrap_weak!(self,this,None);
-        this.get_by_name(name).map(|k|IdNum(k))
+        this.get_by_name(name).map(|k|IdNum::from_usize(k))
     }
 
 

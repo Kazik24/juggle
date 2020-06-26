@@ -39,6 +39,7 @@ impl<'a> DynamicFuture<'a>{
     }
     //unsafe cause this future can be pinned as local variable on stack, and we erase its lifetime so
     //that that it need to be ensured that this object is not used after that variable gets dropped.
+    #[allow(unused)]
     pub unsafe fn new_static(future: Pin<&mut (dyn Future<Output=()> + 'a)>,
                              global: Arc<AtomicWakerRegistry>,suspended: bool)->Self{
         let ptr = NonNull::new_unchecked(Pin::into_inner_unchecked(future) as *mut _);
@@ -51,7 +52,6 @@ impl<'a> DynamicFuture<'a>{
         }
     }
     pub fn set_name(&mut self,name: TaskName){self.name = name;}
-    pub fn get_name(&self)->&TaskName{&self.name}
     pub fn get_name_str(&self)->Option<&str>{
         match &self.name {
             TaskName::Static(s) => Some(s),

@@ -4,7 +4,9 @@ use crate::chunk_slab::ChunkSlab;
 use std::cmp::max;
 use std::fmt::Debug;
 
-pub(crate) trait Timing{
+
+
+pub(crate) trait TimerClock{
     type Duration: Copy + Ord + Add<Output=Self::Duration> + Sub<Output=Self::Duration> + Default;
     type Instant;
     fn start(&self)->Self::Instant;
@@ -15,7 +17,7 @@ pub(crate) trait Timing{
 }
 
 
-pub(crate) struct TimingGroup<I: Timing>{
+pub(crate) struct TimingGroup<I: TimerClock>{
     info: ChunkSlab<usize,TimeEntry<I::Duration>>,
     max: I::Duration,
 }
@@ -23,9 +25,10 @@ pub(crate) struct TimingGroup<I: Timing>{
 struct TimeEntry<D>{
     sum: D,
     proportion: u8,
+    //above_threshold: bool,
 }
 
-impl<I: Timing> TimingGroup<I>{
+impl<I: TimerClock> TimingGroup<I>{
 
     pub fn new()->Self{
         Self{
@@ -38,6 +41,7 @@ impl<I: Timing> TimingGroup<I>{
         self.info.insert(TimeEntry{
             proportion,
             sum: I::Duration::default(),
+            //above_threshold: false,
         })
     }
     pub fn remove(&mut self,key: usize){ self.info.remove(key); }
@@ -84,7 +88,7 @@ impl<I: Timing> TimingGroup<I>{
 }
 #[derive(Default)]
 pub(crate) struct StdTiming;
-impl Timing for StdTiming{
+impl TimerClock for StdTiming{
     type Duration = Duration;
     type Instant = Instant;
     #[inline]

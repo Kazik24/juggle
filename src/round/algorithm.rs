@@ -1,4 +1,4 @@
-use crate::round::dyn_future::{DynamicFuture, TaskName};
+use crate::round::dyn_future::DynamicFuture;
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -6,7 +6,6 @@ use crate::utils::AtomicWakerRegistry;
 use core::task::{Waker, Poll, Context};
 use crate::chunk_slab::ChunkSlab;
 use crate::round::handle::State;
-use core::ops::Deref;
 use core::fmt::{Formatter, Debug};
 use core::mem::swap;
 use core::fmt::Result;
@@ -50,10 +49,10 @@ impl<'futures> SchedulerAlgorithm<'futures>{
         }
     }
     pub(crate) fn clone_registry(&self)->Arc<AtomicWakerRegistry>{self.last_waker.clone()}
-    //safe to call from inside task
+    //safe to call from inside task because chunkslab never moves futures.
     pub(crate) fn register(&mut self,dynamic: DynamicFuture<'futures>)->TaskKey{
         let suspended = dynamic.is_suspended();
-        let key = self.registry.insert(dynamic); //won't realloc because it uses ChunkSlab
+        let key = self.registry.insert(dynamic); //won't realloc other futures because it uses ChunkSlab
         if suspended {
             self.suspended_count += 1; //increase count cause added task was suspended
         } else {
@@ -100,6 +99,7 @@ impl<'futures> SchedulerAlgorithm<'futures>{
         }
     }
 
+    //if rotate_once encounters cancelled task, then it will be removed from queue and registry
     pub(crate) fn cancel(&mut self,key: TaskKey)->bool{
         match self.registry.get_mut(key) {
             Some(task) if !task.is_cancelled() => {
@@ -115,16 +115,15 @@ impl<'futures> SchedulerAlgorithm<'futures>{
     }
     pub(crate) fn get_by_name(&self,name: &str)->Option<TaskKey>{
         for (k,v) in self.registry.iter(){
-            match v.get_name() {
-                TaskName::Dynamic(n) if n.deref() == name => return Some(k),
-                TaskName::Static(n) if *n == name => return Some(k),
+            match v.get_name_str() {
+                Some(n) if n == name => return Some(k),
                 _ => {}
             }
         }
         None
     }
 
-    pub(crate) fn get_dynamic(&self,key: TaskKey)->Option<&DynamicFuture>{ self.registry.get(key) }
+    pub(crate) fn get_dynamic(&self,key: TaskKey)->Option<&DynamicFuture<'futures>>{ self.registry.get(key) }
     pub(crate) fn get_dynamic_mut(&mut self,key: TaskKey)->Option<&mut DynamicFuture<'futures>>{ self.registry.get_mut(key) }
 
     pub(crate) fn format_internal(&self, f: &mut Formatter<'_>,name: &str) -> Result {
@@ -132,6 +131,8 @@ impl<'futures> SchedulerAlgorithm<'futures>{
             &'a ChunkSlab<TaskKey,DynamicFuture<'b>>,
             Option<TaskKey>,
         );
+
+
 
         impl<'a,'b> Debug for DebugTask<'a,'b>{
             fn fmt(&self, f: &mut Formatter<'_>) -> Result {

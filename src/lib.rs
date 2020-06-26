@@ -3,7 +3,7 @@
 //! preemption.
 //!
 
-
+#![warn(missing_docs)]
 
 extern crate alloc;
 
@@ -14,13 +14,14 @@ mod yield_helper;
 mod load;
 mod timing;
 mod block;
-
+mod signal;
 
 pub use self::yield_helper::Yield;
 pub use self::round::{Wheel, WheelHandle, LockedWheel, IdNum, SpawnParams, State, SuspendError};
 pub use self::load::*;
 pub use self::timing::*;
 pub use self::block::*;
+
 
 /// Yield current task. Gives the sheduler opportunity to switch to another task.
 ///
@@ -75,5 +76,123 @@ macro_rules! yield_until{
             let ret: bool = $test_expr;
             ret
         }).await
+    }
+}
+
+
+macro_rules! test_break{
+    ($id:literal) => {
+        #[cfg(test)]
+        $crate::test_util::Breakpoints::on_breakpoint($id);
+    }
+}
+
+#[cfg(test)]
+pub mod test_util{
+    extern crate std;
+    use std::cell::Cell;
+    use std::ptr::NonNull;
+    use std::marker::PhantomData;
+    use std::sync::{Mutex, Condvar, Arc};
+    use std::collections::HashMap;
+    use std::mem::replace;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::thread::{spawn, sleep};
+    use std::time::Duration;
+
+    thread_local!{
+        static BREAK_CONTEXT: Cell<Option<NonNull<Breakpoints>>> = Cell::new(None);
+    }
+
+    pub struct Breakpoints{
+        mutex: Mutex<HashMap<u32,(bool,Arc<Condvar>)>>
+    }
+    pub struct BreakGuard<'a>(Option<NonNull<Breakpoints>>,PhantomData<&'a ()>);
+    impl<'a> Drop for BreakGuard<'a>{
+        fn drop(&mut self) { BREAK_CONTEXT.with(|b|b.set(self.0)); }
+    }
+
+    impl Breakpoints{
+        pub fn new()->Self{
+            Self{
+                mutex: Mutex::new(HashMap::new()),
+            }
+        }
+        pub fn register(&self)->BreakGuard{
+            let next = unsafe{NonNull::new_unchecked(self as *const _ as *mut _)};
+            let prev = BREAK_CONTEXT.with(|b|b.replace(Some(next)));
+            BreakGuard(prev,PhantomData)
+        }
+        pub fn set_breakpoint(&self,id: u32,value: bool){
+            let mut guard = self.mutex.lock().unwrap();
+            let r = guard.entry(id).or_insert((false,Arc::new(Condvar::new())));
+            if replace(&mut r.0,value) {
+                if !value {
+                    r.1.notify_all();
+                }
+            }
+        }
+        pub fn on_breakpoint(id: u32){
+            let ctx = BREAK_CONTEXT.with(|b|b.get());
+            if let Some(ctx) = ctx {
+                let ctx = unsafe{&*ctx.as_ptr()};
+                let mut guard = ctx.mutex.lock().unwrap();
+                let var = match guard.get(&id) {
+                    Some(var) => (var.0,var.1.clone()),
+                    None => return,
+                };
+                if var.0 {
+                    var.1.wait(guard);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_breakpoints(){
+        let brx = Arc::new(Breakpoints::new());
+        let bry = Arc::new(Breakpoints::new());
+        let m = Arc::new([AtomicBool::new(false), AtomicBool::new(false), AtomicBool::new(false)]);
+
+        for i in 0..3 {
+            brx.set_breakpoint(i,true);
+            bry.set_breakpoint(i,true);
+        }
+
+        let br1 = brx.clone();
+        let br2 = bry.clone();
+        let marks = m.clone();
+        let h = spawn(move||{
+            let guard = br1.register();
+            test_break!(0);
+            assert!(marks[0].load(Ordering::SeqCst));
+            br2.set_breakpoint(0,false);
+
+            test_break!(1);
+            sleep(Duration::from_millis(10));
+            assert!(marks[1].load(Ordering::SeqCst));
+            br2.set_breakpoint(1,false);
+
+            test_break!(2);
+            sleep(Duration::from_millis(10));
+            assert!(marks[2].load(Ordering::SeqCst));
+            br2.set_breakpoint(2,false);
+        });
+        let guard = bry.register();
+        sleep(Duration::from_millis(100));
+
+        m[0].store(true,Ordering::SeqCst);
+        brx.set_breakpoint(0,false);
+        test_break!(0);
+        sleep(Duration::from_millis(10));
+        m[1].store(true,Ordering::SeqCst);
+        brx.set_breakpoint(1,false);
+        test_break!(1);
+        sleep(Duration::from_millis(10));
+        m[2].store(true,Ordering::SeqCst);
+        brx.set_breakpoint(2,false);
+        test_break!(2);
+
+        h.join().unwrap();
     }
 }

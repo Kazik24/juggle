@@ -3,18 +3,18 @@ use core::task::{Context, Poll};
 use core::pin::Pin;
 use alloc::rc::Rc;
 use core::cell::RefCell;
-use crate::timing::{StdTiming, Timing};
+use crate::timing::{StdTiming, TimerClock};
 use crate::TimingGroup;
 
 
-struct GenericLoadBalance<F: Future,I: Timing>{
+struct GenericLoadBalance<F: Future,I: TimerClock>{
     index: usize,
     group: Rc<(RefCell<TimingGroup<I>>,I)>,
     future: F,
 }
 
 
-impl<F: Future,I: Timing + Default> GenericLoadBalance<F,I>{
+impl<F: Future,I: TimerClock + Default> GenericLoadBalance<F,I>{
     pub fn new(prop: u8,future: F)->Self{
         let mut group = TimingGroup::new();
         let key = group.add(prop);
@@ -36,13 +36,13 @@ impl<F: Future,I: Timing + Default> GenericLoadBalance<F,I>{
 }
 
 
-impl<F: Future,I: Timing> Drop for GenericLoadBalance<F,I>{
+impl<F: Future,I: TimerClock> Drop for GenericLoadBalance<F,I>{
     fn drop(&mut self) {
         self.group.0.borrow_mut().remove(self.index);
     }
 }
 
-impl<F: Future,I: Timing> Future for GenericLoadBalance<F,I>{
+impl<F: Future,I: TimerClock> Future for GenericLoadBalance<F,I>{
     type Output = F::Output;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
         if !self.group.0.borrow().can_execute(self.index) {
