@@ -1,4 +1,5 @@
 use juggle::*;
+use juggle::utils::LoadBalance;
 use std::sync::atomic::*;
 use std::time::{Instant, Duration};
 use std::thread::{sleep, spawn};

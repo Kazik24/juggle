@@ -3,6 +3,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{RawWakerVTable, RawWaker, Waker, Context, Poll};
 use core::ptr::null;
 use core::pin::Pin;
+use crate::utils::noop_waker;
 
 pub(crate) trait Parker{
     /// Parks this thread is there is no token available, else returns immediately
@@ -61,7 +62,7 @@ impl Parker for SpinParker{
 /// ```
 pub fn spin_block_on<F>(mut future: F)->F::Output where F:Future{
     let mut pinned = unsafe{ Pin::new_unchecked(&mut future) };
-    let dummy_waker = unsafe{ Waker::from_raw(RawWaker::new(null(),&NOOP_VTABLE)) };
+    let dummy_waker = noop_waker();
     let mut ctx = Context::from_waker(&dummy_waker);
     loop{
         match pinned.as_mut().poll(&mut ctx) {
@@ -71,6 +72,3 @@ pub fn spin_block_on<F>(mut future: F)->F::Output where F:Future{
     }
 }
 
-fn noop_clone(_: *const ()) -> RawWaker{ RawWaker::new(null(),&NOOP_VTABLE) }
-fn noop_dummy(_: *const ()) {}
-static NOOP_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone,noop_dummy,noop_dummy,noop_dummy);

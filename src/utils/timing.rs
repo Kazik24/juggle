@@ -69,6 +69,7 @@ impl<I: TimerClock> TimingGroup<I>{
         //execute normally
         true
     }
+
     pub fn update_duration(&mut self,key: usize,dur: I::Duration){
         let this = self.info.get_mut(key).expect("Error: unknown key passed to TimingGroup::update_duration");
         this.sum = this.sum + dur;

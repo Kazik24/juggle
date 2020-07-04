@@ -257,6 +257,7 @@ mod tests{
         let k2 = slab.insert(20);
         let ptr1 = slab.get(k1).unwrap() as *const _;
         let ptr2 = slab.get(k2).unwrap() as *const _;
+        assert!(!core::ptr::eq(ptr1,ptr2));
         for _ in 0..200 {
             slab.insert(30);
         }

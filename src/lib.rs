@@ -7,19 +7,14 @@
 
 extern crate alloc;
 
+pub mod utils;
 mod round;
-mod utils;
 mod chunk_slab;
 mod yield_helper;
-mod load;
-mod timing;
 mod block;
-mod signal;
 
 pub use self::yield_helper::Yield;
 pub use self::round::{Wheel, WheelHandle, LockedWheel, IdNum, SpawnParams, State, SuspendError};
-pub use self::load::*;
-pub use self::timing::*;
 pub use self::block::*;
 
 
@@ -88,7 +83,7 @@ macro_rules! test_break{
 }
 
 #[cfg(test)]
-pub mod test_util{
+pub(crate) mod test_util{
     extern crate std;
     use std::cell::Cell;
     use std::ptr::NonNull;
@@ -145,6 +140,10 @@ pub mod test_util{
                     var.1.wait(guard);
                 }
             }
+        }
+        pub fn get_held(&self)->Vec<u32>{
+            let guard = self.mutex.lock().unwrap();
+            guard.iter().filter_map(|(&k,(flag,_))| if *flag {Some(k)} else {None}).collect()
         }
     }
 

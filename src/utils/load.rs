@@ -3,8 +3,7 @@ use core::task::{Context, Poll};
 use core::pin::Pin;
 use alloc::rc::Rc;
 use core::cell::RefCell;
-use crate::timing::{StdTiming, TimerClock};
-use crate::TimingGroup;
+use crate::utils::{StdTiming, TimerClock, TimingGroup};
 
 
 struct GenericLoadBalance<F: Future,I: TimerClock>{
@@ -14,13 +13,13 @@ struct GenericLoadBalance<F: Future,I: TimerClock>{
 }
 
 
-impl<F: Future,I: TimerClock + Default> GenericLoadBalance<F,I>{
-    pub fn new(prop: u8,future: F)->Self{
+impl<F: Future,I: TimerClock> GenericLoadBalance<F,I>{
+    pub fn new_with(prop: u8,future: F,clk: I)->Self{
         let mut group = TimingGroup::new();
         let key = group.add(prop);
         Self{
             index: key,
-            group: Rc::new((RefCell::new(group),I::default())),
+            group: Rc::new((RefCell::new(group),clk)),
             future
         }
     }
@@ -32,7 +31,6 @@ impl<F: Future,I: TimerClock + Default> GenericLoadBalance<F,I>{
             future,
         }
     }
-
 }
 
 
@@ -51,7 +49,7 @@ impl<F: Future,I: TimerClock> Future for GenericLoadBalance<F,I>{
         }
 
         let start = self.group.1.start();
-        let pin =unsafe{ Pin::new_unchecked(&mut self.as_mut().get_unchecked_mut().future) };
+        let pin = unsafe{ Pin::new_unchecked(&mut self.as_mut().get_unchecked_mut().future) };
         let res = pin.poll(cx);
         let dur = self.group.1.stop(start);
         self.group.0.borrow_mut().update_duration(self.index,dur);
@@ -67,7 +65,7 @@ pub struct LoadBalance<F: Future>{
 }
 impl<F: Future> LoadBalance<F>{
     pub fn with(prop: u8,future: F)->Self{
-        Self{inner: GenericLoadBalance::new(prop,future)}
+        Self{inner: GenericLoadBalance::new_with(prop,future,StdTiming::default())}
     }
     pub fn add<G>(&mut self,prop: u8,future: G)->LoadBalance<G> where G: Future{
         LoadBalance{inner:self.inner.add(prop,future)}

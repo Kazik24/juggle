@@ -262,8 +262,7 @@ impl<'futures> SchedulerAlgorithm<'futures>{
             let guard = Guard(current);
             // be careful with interior mutability types here cause poll_local can invoke any method
             // on handle, therefore 'from' queue shouldn't be edited by handles (other structures
-            // are pretty much ok, actually even 'from' queue is ok with this cause it is not
-            // borrowed by iterators or other such things but it might disturb task processing)
+            // are pretty much ok)
             let result = run_task.poll_local().is_pending(); //run user code
             drop(guard);
 
