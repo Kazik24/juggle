@@ -37,6 +37,18 @@ impl<'futures> SchedulerAlgorithm<'futures>{
             registry: ChunkSlab::new(),
         }
     }
+    pub(crate) fn with_capacity(cap: usize)->Self{
+        Self{
+            runnable0: VecDeque::with_capacity(cap),
+            runnable1: VecDeque::with_capacity(cap),
+            which_buffer: false,
+            deferred: Vec::with_capacity(cap),
+            last_waker: Arc::new(AtomicWakerRegistry::empty()),
+            suspended_count: 0,
+            current: None,
+            registry: ChunkSlab::with_capacity(cap),
+        }
+    }
     pub(crate) fn get_current(&self)->Option<TaskKey>{self.current}
     //safe to call from inside task
     fn enqueue_runnable(&mut self,key: TaskKey,check_absent: bool){

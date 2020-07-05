@@ -44,6 +44,13 @@ impl<I: ChunkSlabKey,T> ChunkSlab<I,T>{
             len: 0,
         }
     }
+    pub fn with_capacity(cap: usize)->Self{
+        Self{
+            entries: Vec::with_capacity(cap/CHUNK_SIZE + if cap%CHUNK_SIZE != 0 {1} else {0}),
+            next: I::zero(),
+            len: 0,
+        }
+    }
     pub fn insert(&mut self,val: T)->I{
         if I::max_value() != usize::max_value(){
             if self.len.saturating_sub(1) == I::max_value(){

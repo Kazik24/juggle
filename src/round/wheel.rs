@@ -83,7 +83,15 @@ pub struct LockedWheel<'futures>{
 impl<'futures> Wheel<'futures>{
     /// Create new instance
     pub fn new()->Self{
-        let ptr = Rc::new(UnsafeCell::new(SchedulerAlgorithm::<'futures>::new()));
+        Self::from_inner(SchedulerAlgorithm::new())
+    }
+
+    /// Create new instance that can contain at least `capacity` number of tasks without reallocating.
+    pub fn with_capacity(capacity: usize)->Self{
+        Self::from_inner(SchedulerAlgorithm::with_capacity(capacity))
+    }
+    fn from_inner(alg: SchedulerAlgorithm<'futures>)->Self{
+        let ptr = Rc::new(UnsafeCell::new(alg));
         let handle = WheelHandle::new(Rc::downgrade(&ptr));
         Self{ptr,handle}
     }
@@ -113,9 +121,7 @@ impl<'futures> LockedWheel<'futures>{
     /// Note that if handles that were invalidated after this wheel was locked will not be valid
     /// again after calling this method, new [`handle`](struct.Wheel.html#method.handle) should be obtained.
     pub fn unlock(self)->Wheel<'futures>{
-        let ptr = Rc::new(UnsafeCell::new(self.alg));
-        let handle = WheelHandle::new(Rc::downgrade(&ptr));
-        Wheel{ptr,handle}
+        Wheel::from_inner(self.alg)
     }
 }
 

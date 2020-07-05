@@ -5,7 +5,7 @@ use core::ptr::read;
 use core::ops::DerefMut;
 
 pub struct AtomicCell<T>{
-    mark: AtomicUsize,
+    mark: AtomicBool,
     cell: UnsafeCell<ManuallyDrop<T>>,
 }
 unsafe impl<T> Send for AtomicCell<T> where T: Send + Sync{}
@@ -15,15 +15,14 @@ impl<T> AtomicCell<T>{
 
     pub fn new(value: T)->Self{
         Self{
-            mark: AtomicUsize::new(0),
+            mark: AtomicBool::new(false),
             cell: UnsafeCell::new(ManuallyDrop::new(value)),
         }
     }
 
     pub fn try_swap(&self,value: T)->Result<T,T>{
-        let prev = self.mark.load(Ordering::Acquire);
-        if prev == 0 {
-            if self.mark.compare_and_swap(prev,1,Ordering::Relaxed) != prev { //other thread interfered
+        if !self.mark.load(Ordering::Acquire) {
+            if self.mark.compare_and_swap(false,true,Ordering::Relaxed) { //other thread interfered
                 return Err(value);
             }
             //we know for sure we are only thread writing to this location
@@ -31,7 +30,7 @@ impl<T> AtomicCell<T>{
             unsafe{
                 let first = self.cell.get().read_volatile();
                 self.cell.get().write_volatile(ManuallyDrop::new(value));
-                self.mark.store(0,Ordering::Release);
+                self.mark.store(false,Ordering::Release);
                 return Ok(ManuallyDrop::into_inner(first));
             }
         } else { //we are some other thread waiting for this location
@@ -52,16 +51,15 @@ impl<T> AtomicCell<T>{
     }
 
     pub fn try_apply<F,R>(&self,func: F)->Result<R,F> where F: FnOnce(&mut T)->R, T: Copy{
-        let prev = self.mark.load(Ordering::Acquire);
-        if prev == 0 {
-            if self.mark.compare_and_swap(prev,1,Ordering::Relaxed) != prev { //other thread interfered
+        if !self.mark.load(Ordering::Acquire) {
+            if self.mark.compare_and_swap(false,true,Ordering::Relaxed) { //other thread interfered
                 return Err(func);
             }
             //we know for sure we are only thread writing to this location
-            struct UnwindGuard<'a>(&'a AtomicUsize);
+            struct UnwindGuard<'a>(&'a AtomicBool);
             impl<'a> Drop for UnwindGuard<'a>{
                 fn drop(&mut self) { //perform cleanup on normal execution and if closure panics
-                    self.0.fetch_sub(1,Ordering::Release);
+                    self.0.store(false,Ordering::Release);
                 }
             }
             //modify value
