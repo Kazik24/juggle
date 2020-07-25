@@ -1,6 +1,5 @@
 use juggle::*;
 use juggle::utils::LoadBalance;
-use std::sync::atomic::*;
 use std::time::{Instant, Duration};
 use std::thread::{sleep, spawn};
 use rand::Rng;
@@ -89,6 +88,7 @@ fn combine_results(res: &[HashMap<u8,Vec<u64>>])->HashMap<u8,Vec<u64>>{
     // processed
 }
 
+#[allow(dead_code)]
 fn print_results(map: &BTreeMap<u8,(u64,u64,Vec<u64>)>,sigma: f64){
     for (&k,v) in map.iter(){
         let deviation = v.1 as f64 * sigma;

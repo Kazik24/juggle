@@ -1,7 +1,6 @@
 use core::future::Future;
 use core::sync::atomic::{AtomicBool, Ordering};
-use core::task::{RawWakerVTable, RawWaker, Waker, Context, Poll};
-use core::ptr::null;
+use core::task::{Context, Poll};
 use core::pin::Pin;
 use crate::utils::noop_waker;
 

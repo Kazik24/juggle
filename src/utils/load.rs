@@ -59,14 +59,25 @@ impl<F: Future,I: TimerClock> Future for GenericLoadBalance<F,I>{
 }
 
 
-
+/// Helper for equally dividing time slots across multiple tasks.
+///
+/// This struct can be used as a wrapper for tasks to ensure they have more-less equal amount of time
+/// per slot to execute.
+///
+/// Each task has number of time slots assigned to it. Time slots divides time destinated for this group
+/// into parts for each task. Some task can therefore have assigned more time than the others, e.g if
+/// you have 2 tasks, first with 1 time slot and second with 2, then let them run for 3 seconds, first
+/// task will be running 1 second from this time and second task - 2 seconds.
 pub struct LoadBalance<F: Future>{
     inner: GenericLoadBalance<F,StdTiming>,
 }
 impl<F: Future> LoadBalance<F>{
+    /// Create new load balancing group with one future in it and given number of time slots assigned to it.
     pub fn with(prop: u8,future: F)->Self{
         Self{inner: GenericLoadBalance::new_with(prop,future,StdTiming::default())}
     }
+    /// Add future to this load balancing group with given number of time slots assigned. Returned wrapper
+    /// also belongs to the same group as this wrapper.
     pub fn add<G>(&mut self,prop: u8,future: G)->LoadBalance<G> where G: Future{
         LoadBalance{inner:self.inner.add(prop,future)}
     }

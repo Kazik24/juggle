@@ -89,7 +89,7 @@ pub(crate) mod test_util{
     use std::ptr::NonNull;
     use std::marker::PhantomData;
     use std::sync::{Mutex, Condvar, Arc};
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::mem::replace;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread::{spawn, sleep};
@@ -137,7 +137,7 @@ pub(crate) mod test_util{
                     None => return,
                 };
                 if var.0 {
-                    var.1.wait(guard);
+                    drop(var.1.wait(guard).unwrap());
                 }
             }
         }
@@ -179,6 +179,10 @@ pub(crate) mod test_util{
         });
         let guard = bry.register();
         sleep(Duration::from_millis(100));
+
+        let check = vec![0,1,2].into_iter().collect::<HashSet<_>>();
+        assert_eq!(check,brx.get_held().into_iter().collect());
+        assert_eq!(check,bry.get_held().into_iter().collect());
 
         m[0].store(true,Ordering::SeqCst);
         brx.set_breakpoint(0,false);

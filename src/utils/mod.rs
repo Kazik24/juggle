@@ -1,3 +1,10 @@
+//! Couple of helpful utilities.
+//!
+//! This module contains primitives useful for working with tasks and synchronization.
+
+
+
+
 use alloc::sync::Arc;
 use core::mem;
 use core::task::{RawWakerVTable, RawWaker, Waker};
@@ -15,15 +22,27 @@ pub use timing::*;
 use std::ptr::null;
 
 
+/// Implement this trait if you want to create custom waker with [to_waker](fn.to_waker.html) function.
 pub trait DynamicWake{
+    /// Perform waking action.
     fn wake(&self);
 }
+/// Convert atomic reference counted pointer to type implementing [DynamicWake](trait.DynamicWake.html)
+/// into Waker.
+///
+/// Returned waker wraps given Arc so that cloning the waker will result also in cloning underlined
+/// Arc. Invoking Waker's `wake` or `wake_by_ref` will call [wake](trait.DynamicWake.html#tymethod.wake)
+/// on passed type implementing trait.
 pub fn to_waker<T: DynamicWake + Send + Sync + 'static>(ptr: Arc<T>)->Waker{
     let data = Arc::into_raw(ptr) as *const ();
     let vtable = &Helper::<T>::VTABLE;
     unsafe{Waker::from_raw(RawWaker::new(data,vtable))}
 }
 
+/// Returns waker that performs no action when waked.
+///
+/// Returned waker can be used as dummy waker when polling future. This waker is static so using
+/// `mem::forget` on it won't cause a leak.
 pub fn noop_waker()->Waker{
     unsafe{ Waker::from_raw(RawWaker::new(null(),&NOOP_WAKER_VTABLE)) }
 }
@@ -56,29 +75,6 @@ impl<T: DynamicWake + Send + Sync + 'static> Helper<T>{
         mem::drop(Arc::from_raw(ptr as *const T));
     }
 }
-
-// pub(crate) struct AtomicOptionBox<T>(AtomicPtr<T>);
-// impl<T> AtomicOptionBox<T>{
-//     fn to_pointer(value: Option<Box<T>>)->*mut T{
-//         match value {
-//             Some(v) => Box::into_raw(v),
-//             None => null_mut(),
-//         }
-//     }
-//     fn from_pointer(ptr: *mut T)->Option<Box<T>>{
-//         if ptr.is_null() { None } else { Some(unsafe{ Box::from_raw(ptr) }) }
-//     }
-//     pub fn new(value: Option<Box<T>>)->Self{ Self(AtomicPtr::new(Self::to_pointer(value))) }
-//     pub fn swap(&self,value: Option<Box<T>>)->Option<Box<T>>{
-//         Self::from_pointer(self.0.swap(Self::to_pointer(value),Ordering::AcqRel))
-//     }
-//     pub fn is_none(&self,)->bool{ self.0.load(Ordering::Relaxed).is_null() }
-// }
-// impl<T> Drop for AtomicOptionBox<T>{
-//     fn drop(&mut self) {
-//         drop(Self::from_pointer(self.0.load(Ordering::Relaxed)));
-//     }
-// }
 
 pub(crate) struct AtomicWakerRegistry{
     inner: AtomicCell<Option<Waker>>,

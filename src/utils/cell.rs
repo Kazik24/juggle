@@ -4,6 +4,9 @@ use core::sync::atomic::*;
 use core::ptr::read;
 use core::ops::DerefMut;
 
+/// Wrapper struct that allows modifying and swapping value atomically.
+///
+/// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
 pub struct AtomicCell<T>{
     mark: AtomicBool,
     cell: UnsafeCell<ManuallyDrop<T>>,
@@ -13,13 +16,22 @@ unsafe impl<T> Sync for AtomicCell<T> where T: Send + Sync{}
 
 impl<T> AtomicCell<T>{
 
-    pub fn new(value: T)->Self{
+    /// Create new atomic cell with initial value.
+    pub const fn new(value: T)->Self{
         Self{
             mark: AtomicBool::new(false),
             cell: UnsafeCell::new(ManuallyDrop::new(value)),
         }
     }
 
+    /// Tries to swap the value inside cell.
+    ///
+    /// When successful returns `Ok` with previous value. In case of failure, returns `Err` with
+    /// argument passed to it, returning ownership of value.
+    ///
+    /// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
+    /// This method might fail in case some other thread is now modifying this value. In case of failure
+    /// you can perform additional checks or try to swap value again until success.
     pub fn try_swap(&self,value: T)->Result<T,T>{
         if !self.mark.load(Ordering::Acquire) {
             if self.mark.compare_and_swap(false,true,Ordering::Relaxed) { //other thread interfered
@@ -38,6 +50,12 @@ impl<T> AtomicCell<T>{
         }
     }
 
+    /// Swap the value inside cell.
+    ///
+    /// Returns previous value from cell.
+    ///
+    /// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
+    /// This method tries to swap value in busy loop until success.
     pub fn swap(&self,mut value: T)->T{
         loop{
             match self.try_swap(value) {
@@ -50,6 +68,18 @@ impl<T> AtomicCell<T>{
         }
     }
 
+    /// Tries to perform action on value inside cell, possibly mutating it.
+    ///
+    /// When successful returns `Ok` with value returned from executed function.
+    /// In case of failure, returns `Err` with argument passed to it,
+    /// returning ownership of function.
+    ///
+    /// `T` is required to be copy in case if given function panics. When this occurs, the value is
+    /// restored to state from before applying the function and panic is propagated.
+    ///
+    /// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
+    /// This method might fail in case some other thread is now modifying this value. In case of failure
+    /// you can perform additional checks or try to apply action again until success.
     pub fn try_apply<F,R>(&self,func: F)->Result<R,F> where F: FnOnce(&mut T)->R, T: Copy{
         if !self.mark.load(Ordering::Acquire) {
             if self.mark.compare_and_swap(false,true,Ordering::Relaxed) { //other thread interfered
@@ -76,6 +106,15 @@ impl<T> AtomicCell<T>{
         }
     }
 
+    /// Perform action on value inside cell, possibly mutating it.
+    ///
+    /// Returns value returned from executed function.
+    ///
+    /// `T` is required to be copy in case if given function panics. When this occurs, the value is
+    /// restored to state from before applying the function and panic is propagated.
+    ///
+    /// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
+    /// This method tries to apply function in busy loop until success.
     pub fn apply<F,R>(&self,mut func: F)->R where F: FnOnce(&mut T)->R, T: Copy{
         loop{
             match self.try_apply(func) {
@@ -88,10 +127,13 @@ impl<T> AtomicCell<T>{
         }
     }
 
+    /// Get mutable reference to content of this struct. This method statically ensures that mutation
+    /// is allowed because it takes self by mutable reference.
     #[inline(always)]
     pub fn get_mut(&mut self)->&mut T{
         unsafe{ &mut *self.cell.get() }
     }
+    /// Takes ownership of cell and extracts wrapped value from it.
     #[inline(always)]
     pub fn into_inner(self)->T{
         unsafe{
@@ -247,7 +289,7 @@ mod test{
         swap.try_apply(|val|{
             assert_eq!(*val,12345);
             *val = 10;
-        });
+        }).ok().unwrap();
         assert_eq!(swap.swap(0),10);
     }
     #[test]
