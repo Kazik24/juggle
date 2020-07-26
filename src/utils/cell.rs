@@ -1,10 +1,9 @@
 use core::cell::UnsafeCell;
 use core::mem::{ManuallyDrop, forget};
 use core::sync::atomic::*;
-use core::ptr::read;
 use core::ops::DerefMut;
 
-/// Wrapper struct that allows modifying and swapping value atomically.
+/// Wrapper struct that allows modifying and swapping value without using locks.
 ///
 /// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
 pub struct AtomicCell<T>{
@@ -33,20 +32,17 @@ impl<T> AtomicCell<T>{
     /// This method might fail in case some other thread is now modifying this value. In case of failure
     /// you can perform additional checks or try to swap value again until success.
     pub fn try_swap(&self,value: T)->Result<T,T>{
-        if !self.mark.load(Ordering::Acquire) {
-            if self.mark.compare_and_swap(false,true,Ordering::Relaxed) { //other thread interfered
-                return Err(value);
-            }
+        if self.mark.compare_and_swap(false,true,Ordering::Acquire) { //other thread interfered
+            Err(value)
+        }else{
             //we know for sure we are only thread writing to this location
             //swap values
             unsafe{
                 let first = self.cell.get().read_volatile();
                 self.cell.get().write_volatile(ManuallyDrop::new(value));
                 self.mark.store(false,Ordering::Release);
-                return Ok(ManuallyDrop::into_inner(first));
+                Ok(ManuallyDrop::into_inner(first))
             }
-        } else { //we are some other thread waiting for this location
-            Err(value)
         }
     }
 
@@ -81,10 +77,9 @@ impl<T> AtomicCell<T>{
     /// This method might fail in case some other thread is now modifying this value. In case of failure
     /// you can perform additional checks or try to apply action again until success.
     pub fn try_apply<F,R>(&self,func: F)->Result<R,F> where F: FnOnce(&mut T)->R, T: Copy{
-        if !self.mark.load(Ordering::Acquire) {
-            if self.mark.compare_and_swap(false,true,Ordering::Relaxed) { //other thread interfered
-                return Err(func);
-            }
+        if self.mark.compare_and_swap(false,true,Ordering::Acquire) { //other thread interfered
+            Err(func)
+        }else{
             //we know for sure we are only thread writing to this location
             struct UnwindGuard<'a>(&'a AtomicBool);
             impl<'a> Drop for UnwindGuard<'a>{
@@ -101,8 +96,6 @@ impl<T> AtomicCell<T>{
                 drop(guard);//explicit drop
                 Ok(res)
             }
-        } else { //we are some other thread waiting for this location
-            Err(func)
         }
     }
 
@@ -137,7 +130,7 @@ impl<T> AtomicCell<T>{
     #[inline(always)]
     pub fn into_inner(self)->T{
         unsafe{
-            let data = read(self.cell.get());
+            let data = self.cell.get().read();
             forget(self);//don't run destructor
             ManuallyDrop::into_inner(data)
         }
@@ -157,13 +150,11 @@ impl<T> Drop for AtomicCell<T>{
 mod test{
     use std::sync::{Arc, Barrier};
     use super::*;
-    use std::thread::{JoinHandle, spawn};
-    use std::pin::Pin;
+    use std::thread::spawn;
     use std::collections::HashSet;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hasher, Hash};
     use std::num::*;
-    use std::ops::Range;
     use std::mem::replace;
 
     fn test_swap_many_case<T,F>(threads: u64, per_thread: u64, mut factory: impl FnMut(u64)->T,op: F)

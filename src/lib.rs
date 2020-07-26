@@ -74,7 +74,6 @@ macro_rules! yield_until{
     }
 }
 
-
 macro_rules! test_break{
     ($id:literal) => {
         #[cfg(test)]
@@ -131,7 +130,7 @@ pub(crate) mod test_util{
             let ctx = BREAK_CONTEXT.with(|b|b.get());
             if let Some(ctx) = ctx {
                 let ctx = unsafe{&*ctx.as_ptr()};
-                let mut guard = ctx.mutex.lock().unwrap();
+                let guard = ctx.mutex.lock().unwrap();
                 let var = match guard.get(&id) {
                     Some(var) => (var.0,var.1.clone()),
                     None => return,
@@ -162,7 +161,7 @@ pub(crate) mod test_util{
         let br2 = bry.clone();
         let marks = m.clone();
         let h = spawn(move||{
-            let guard = br1.register();
+            let _guard = br1.register();
             test_break!(0);
             assert!(marks[0].load(Ordering::SeqCst));
             br2.set_breakpoint(0,false);
@@ -177,7 +176,7 @@ pub(crate) mod test_util{
             assert!(marks[2].load(Ordering::SeqCst));
             br2.set_breakpoint(2,false);
         });
-        let guard = bry.register();
+        let _guard = bry.register();
         sleep(Duration::from_millis(100));
 
         let check = vec![0,1,2].into_iter().collect::<HashSet<_>>();

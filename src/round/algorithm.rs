@@ -136,7 +136,6 @@ impl<'futures> SchedulerAlgorithm<'futures>{
     }
 
     pub(crate) fn get_dynamic(&self,key: TaskKey)->Option<&DynamicFuture<'futures>>{ self.registry.get(key) }
-    pub(crate) fn get_dynamic_mut(&mut self,key: TaskKey)->Option<&mut DynamicFuture<'futures>>{ self.registry.get_mut(key) }
 
     pub(crate) fn format_internal(&self, f: &mut Formatter<'_>,name: &str) -> Result {
         pub(crate) struct DebugTask<'a,'b>(

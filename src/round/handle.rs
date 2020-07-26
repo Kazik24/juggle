@@ -8,6 +8,7 @@ use core::pin::Pin;
 use crate::round::dyn_future::{DynamicFuture, TaskName};
 use core::fmt::{Debug, Formatter};
 
+/// Handle used to spawn and control tasks in assigned [Wheel](struct.Wheel.html).
 #[derive(Clone)]
 pub struct WheelHandle<'futures>{
     ptr: Weak<UnsafeCell<SchedulerAlgorithm<'futures>>>,
@@ -33,7 +34,11 @@ impl Debug for IdNum {
         write!(f,"IdNum[0x{:X}]",self.0.get() - 1)
     }
 }
-#[derive(Clone,Eq,PartialEq,Hash,Debug)]
+
+/// Parameters used when spawning task inside scheduler.
+///
+/// Default parameters will spawn runnable unnamed task.
+#[derive(Clone,Eq,PartialEq,Hash)]
 pub struct SpawnParams {
     suspended: bool,
     name: TaskName,
@@ -114,10 +119,10 @@ impl<'futures> WheelHandle<'futures>{
     /// # Arguments
     /// * `params` - Task creation parameters. Using default will spawn runnable task without name.
     /// * `future` - The future you want to schedule.
-    /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
-    /// parameters of this task.
     ///
-    /// Returns identifier of newly allocated task or None if this handle is invalid.
+    /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
+    /// parameters of this task. Returns identifier of newly allocated task or None if this
+    /// handle is invalid.
     pub fn spawn<F>(&self, params: impl Into<SpawnParams>, future: F) ->Option<IdNum> where F: Future<Output=()> + 'futures{
         self.spawn_dyn(params,Box::pin(future))
     }
@@ -127,10 +132,10 @@ impl<'futures> WheelHandle<'futures>{
     /// # Arguments
     /// * `params` - Task creation parameters. Using default will spawn runnable task without name.
     /// * `future` - Boxed future you want to schedule.
-    /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
-    /// parameters of this task.
     ///
-    /// Returns identifier of newly allocated task or None if this handle is invalid.
+    /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
+    /// parameters of this task. Returns identifier of newly allocated task or None if this
+    /// handle is invalid.
     pub fn spawn_dyn(&self, params: impl Into<SpawnParams>, future: Pin<Box<dyn Future<Output=()> + 'futures>>) ->Option<IdNum>{
         unwrap_weak!(self,this,None);
         let params = params.into();
@@ -249,23 +254,33 @@ impl<'futures> Debug for WheelHandle<'futures>{
 }
 
 impl SpawnParams {
+    /// Set suspended property.
     pub fn suspend(mut self,value: bool)->Self{
         self.suspended = value;
         self
     }
+    /// Set name property to static string slice.
     pub fn name(mut self,name: &'static str)->Self{
         self.name = TaskName::Static(name);
         self
     }
+    /// Set name property to dynamically allocated string.
     pub fn dyn_name(mut self,name: impl Into<String>)->Self{
         self.name = TaskName::Dynamic(name.into().into_boxed_str());
         self
     }
+    /// Create default parameters (suspended property set to false) with name property set to
+    /// static string slice.
     pub fn named(name: &'static str)->Self{Self::default().name(name)}
+    /// Create default parameters (suspended property set to false) with name property set to
+    /// dynamically allocated string.
     pub fn dyn_named(name: impl Into<String>)->Self{Self::default().dyn_name(name)}
+    /// Create default parameters (name property set to none) with suspended property set to given
+    /// value.
     pub fn suspended(value: bool)->Self{Self::default().suspend(value)}
 }
 impl Default for SpawnParams {
+    /// Create default parameters that will spawn runnable unnamed task.
     fn default() -> Self {
         Self{
             suspended: false,
@@ -273,12 +288,30 @@ impl Default for SpawnParams {
         }
     }
 }
+impl Debug for SpawnParams {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let s: Option<&str> = match &self.name {
+            TaskName::None => None,
+            TaskName::Dynamic(s) => Some(&s),
+            TaskName::Static(s) => Some(s),
+        };
+        if let Some(s) = s {
+            write!(f,"SpawnParams[name: \"{}\", suspended: {}]",s,self.suspended)
+        }else{
+            write!(f,"SpawnParams[suspended: {}]",self.suspended)
+        }
+    }
+}
+
 impl From<&'static str> for SpawnParams{
+    /// Works as [named](struct.SpawnParams.html#method.named) method.
     fn from(v: &'static str) -> Self {SpawnParams::named(v)}
 }
 impl From<String> for SpawnParams {
+    /// Works as [dyn_named](struct.SpawnParams.html#method.dyn_named) method.
     fn from(v: String) -> Self {SpawnParams::dyn_named(v)}
 }
 impl From<bool> for SpawnParams{
+    /// Works as [suspended](struct.SpawnParams.html#method.suspended) method.
     fn from(v: bool) -> Self {SpawnParams::suspended(v)}
 }

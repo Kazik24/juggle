@@ -95,11 +95,13 @@ impl<I: ChunkSlabKey,T> ChunkSlab<I,T>{
             }
         }
     }
+    #[allow(dead_code)]
     pub fn clear(&mut self){
         self.entries.clear();
         self.len = 0;
         self.next = I::zero();
     }
+    #[allow(dead_code)]
     pub fn len(&self)->usize{self.len}
     pub fn get(&self,key: I)->Option<&T>{
         match self.entries.get(key.into_index() / CHUNK_SIZE) {

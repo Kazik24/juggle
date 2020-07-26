@@ -140,6 +140,13 @@ impl<'futures> Future for LockedWheel<'futures>{
     }
 }
 
+
+/// Error returned by scheduler when all tasks become suspended.
+///
+/// [Wheel](struct.Wheel.html)/[LockedWheel](struct.LockedWheel.html) can only operate within single
+/// thread so if all tasks in it become suspended, then it cannot continue execution because there
+/// is no way to resume any task. When such situation occurs, this error is returned by scheduler
+/// `Future`.
 #[derive(Copy,Clone,Eq,PartialEq,Hash,Debug)]
 pub struct SuspendError;
 impl Display for SuspendError{

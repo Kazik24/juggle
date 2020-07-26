@@ -4,12 +4,9 @@
 
 
 
-
 use alloc::sync::Arc;
 use core::mem;
 use core::task::{RawWakerVTable, RawWaker, Waker};
-use core::sync::atomic::{AtomicPtr, Ordering};
-use core::ptr::null_mut;
 
 
 mod cell;
@@ -18,7 +15,7 @@ mod timing;
 
 pub use cell::AtomicCell;
 pub use load::LoadBalance;
-pub use timing::*;
+pub(crate) use timing::*;
 use std::ptr::null;
 
 

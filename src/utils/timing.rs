@@ -45,8 +45,10 @@ impl<I: TimerClock> TimingGroup<I>{
         })
     }
     pub fn remove(&mut self,key: usize){ self.info.remove(key); }
+    #[allow(dead_code)]
     pub fn get_slot_count(&self,key: usize)->Option<u8>{ self.info.get(key).map(|v|v.proportion) }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self){
         self.info.clear();
         self.max = I::Duration::default();
