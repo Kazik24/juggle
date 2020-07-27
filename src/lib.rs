@@ -46,7 +46,8 @@ macro_rules! yield_once{
 
 /// Yield current task until specific expression becomes true.
 /// Gives the sheduler opportunity to switch to another task.
-/// It is recommended to use this function instead of busy wait.
+///
+/// It is recommended to use this function instead of busy wait inside tasks within scheduler.
 ///
 /// # Examples
 ///```
@@ -74,12 +75,6 @@ macro_rules! yield_until{
     }
 }
 
-macro_rules! test_break{
-    ($id:literal) => {
-        #[cfg(test)]
-        $crate::test_util::Breakpoints::on_breakpoint($id);
-    }
-}
 
 #[cfg(test)]
 pub(crate) mod test_util{
@@ -96,6 +91,12 @@ pub(crate) mod test_util{
 
     thread_local!{
         static BREAK_CONTEXT: Cell<Option<NonNull<Breakpoints>>> = Cell::new(None);
+    }
+    macro_rules! test_break{
+        ($id:literal) => {
+            #[cfg(test)]
+            $crate::test_util::Breakpoints::on_breakpoint($id);
+        }
     }
 
     pub struct Breakpoints{

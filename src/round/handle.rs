@@ -229,8 +229,15 @@ impl<'futures> WheelHandle<'futures>{
     }
 
 
+    /// Terminates scheduler, removing all tasks from it and forcing scheduler's future to complete
+    /// without when next yield occurs.
     pub fn terminate_scheduler(&self)->bool{//remove all tasks from scheduler
-        todo!()
+        unwrap_weak!(self,this,false);
+        //todo find better solution
+        for id in this.registry.iter().map(|v|v.0).collect::<Vec<_>>() {
+            this.cancel(id);
+        }
+        true
     }
 
     fn unchecked_mut<'a>(rc: &'a Rc<UnsafeCell<SchedulerAlgorithm<'futures>>>)->&'a mut SchedulerAlgorithm<'futures>{
@@ -238,11 +245,7 @@ impl<'futures> WheelHandle<'futures>{
     }
 
     fn fmt_name(&self, f: &mut Formatter<'_>,name: &str) -> core::fmt::Result {
-        let rc = match self.ptr.upgrade() {
-            Some(v) => v,
-            None => return write!(f,"{}{{ Invalid }}",name),
-        };
-        let this = Self::unchecked_mut(&rc);
+        unwrap_weak!(self,this,write!(f,"{}{{ Invalid }}",name));
         this.format_internal(f,name)
     }
 }

@@ -18,7 +18,7 @@ pub(crate) struct SchedulerAlgorithm<'futures>{
     runnable1: VecDeque<TaskKey>,
     deferred: Vec<TaskKey>,
     last_waker: Arc<AtomicWakerRegistry>,
-    registry: ChunkSlab<TaskKey,DynamicFuture<'futures>>,
+    pub registry: ChunkSlab<TaskKey,DynamicFuture<'futures>>,
     suspended_count: usize,
     current: Option<TaskKey>,
     which_buffer: bool,
