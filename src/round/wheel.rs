@@ -6,6 +6,7 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::*;
 use core::fmt::{Display, Formatter};
+use std::fmt::Debug;
 
 
 /// Single-thread async task scheduler with dynamic task state control.
@@ -122,6 +123,19 @@ impl<'futures> LockedWheel<'futures>{
     /// again after calling this method, new [`handle`](struct.Wheel.html#method.handle) should be obtained.
     pub fn unlock(self)->Wheel<'futures>{
         Wheel::from_inner(self.alg)
+    }
+}
+
+impl<'futures> Debug for Wheel<'futures>{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let this = unsafe{&*self.ptr.get()};
+        this.format_internal(f,"Wheel")
+    }
+}
+
+impl<'futures> Debug for LockedWheel<'futures>{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        self.alg.format_internal(f,"LockedWheel")
     }
 }
 

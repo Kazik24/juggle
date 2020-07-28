@@ -3,10 +3,13 @@ use core::task::{Poll, Context};
 use core::pin::Pin;
 
 /// Helper struct for task dealing with task switching.
+#[derive(Clone,Debug,Hash,Eq,PartialEq)]
 pub struct Yield(bool);
 #[doc(hidden)]
+#[derive(Clone,Debug,Hash,Eq,PartialEq)]
 pub struct YieldUntil<F: FnMut()->bool>(F);
 #[doc(hidden)]
+#[derive(Clone,Debug,Hash,Eq,PartialEq)]
 pub struct YieldTimes{pub remaining: usize}
 
 impl Yield{

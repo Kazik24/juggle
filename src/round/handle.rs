@@ -76,7 +76,7 @@ impl<'futures> WheelHandle<'futures>{
 
     /// Checks if this handle is valid.
     ///
-    /// This method returns true if specific handle is valid and false otherwise. If handle is valid
+    /// This method returns true if specific handle is valid. If handle is valid
     /// it means that it can be used to control tasks in [Wheel](struct.Wheel.html) associated with
     /// it. Handle is valid until associated wheel is dropped or
     /// [`locked`](struct.Wheel.html#method.lock).
@@ -95,6 +95,7 @@ impl<'futures> WheelHandle<'futures>{
 
     /// Checks if this and the other handle reference the same [Wheel](struct.Wheel.html).
     ///
+    /// If any of handles are [invalid](#method.is_valid) then this method returns false.
     /// # Examples
     /// ```
     /// use juggle::*;
@@ -109,9 +110,14 @@ impl<'futures> WheelHandle<'futures>{
     /// assert!(!h1.is_same(&other));
     /// ```
     pub fn is_same(&self,other: &WheelHandle<'_>)->bool{
-        let p1 = self.ptr.as_ptr() as *const ();
-        let p2 = other.ptr.as_ptr() as *const ();
-        p1 == p2
+        match (self.ptr.upgrade(),other.ptr.upgrade()) {
+            (Some(rc1),Some(rc2)) => {
+                let ptr1 = rc1.get() as *mut ();
+                let ptr2 = rc2.get() as *mut ();
+                ptr1 == ptr2
+            }
+            _ => false,
+        }
     }
 
     /// Create new task and obtain its id.
@@ -146,17 +152,24 @@ impl<'futures> WheelHandle<'futures>{
 
     /// Cancel task with given id.
     ///
-    /// If task is already executing then it will remove if when next yield occurs.
+    /// If task is already executing then it will be removed when next yield occurs. Note that when
+    /// getting [state](#method.get_state) of this cancelled task it might be `Cancelled` for some time
+    /// but eventually it will become `Unknown` because scheduler removes tasks only after circling
+    /// through all runnable tasks. Then when new task is spawned it might be assigned to the same id.
     pub fn cancel(&self, id: IdNum) ->bool{
         unwrap_weak!(self,this,false);
         this.cancel(id.to_usize())
     }
     /// Suspend task with given id.
+    ///
+    /// Suspended tasks cannot execute until resumed.
     pub fn suspend(&self, id: IdNum) ->bool{
         unwrap_weak!(self,this,false);
         this.suspend(id.to_usize())
     }
     /// Resume task with given id.
+    ///
+    /// Makes this task `Runnable` again.
     pub fn resume(&self, id: IdNum) ->bool{
         unwrap_weak!(self,this,false);
         this.resume(id.to_usize())
@@ -214,9 +227,20 @@ impl<'futures> WheelHandle<'futures>{
     /// * Handle is [`invalid`](#method.is_valid).
     ///
     /// Note that this method allocates new string. If you don't want to allocate temporary memory
-    /// for string use [`with_name`](#method.with_name)
+    /// for string use [`with_name`](#method.with_name).
     pub fn get_current_name(&self)->Option<String>{
-        self.current().map(|id|self.with_name(id, |s|s.map(|s|s.to_string()).unwrap()))
+        self.current().map(|id|self.get_name(id)).flatten()
+    }
+    /// Returns name of task with specific id as new String.
+    /// Returns None when:
+    /// * Task is unnamed.
+    /// * Given id is not assigned to any task.
+    /// * Handle is [`invalid`](#method.is_valid).
+    ///
+    /// Note that this method allocates new string. If you don't want to allocate temporary memory
+    /// for string use [`with_name`](#method.with_name).
+    pub fn get_name(&self,id: IdNum)->Option<String>{
+        self.with_name(id,|s|s.map(|s|s.to_string()))
     }
     /// Find task id that has name equal to given argument.
     ///
@@ -226,18 +250,6 @@ impl<'futures> WheelHandle<'futures>{
     pub fn get_by_name(&self,name: &str)->Option<IdNum>{
         unwrap_weak!(self,this,None);
         this.get_by_name(name).map(|k|IdNum::from_usize(k))
-    }
-
-
-    /// Terminates scheduler, removing all tasks from it and forcing scheduler's future to complete
-    /// without when next yield occurs.
-    pub fn terminate_scheduler(&self)->bool{//remove all tasks from scheduler
-        unwrap_weak!(self,this,false);
-        //todo find better solution
-        for id in this.registry.iter().map(|v|v.0).collect::<Vec<_>>() {
-            this.cancel(id);
-        }
-        true
     }
 
     fn unchecked_mut<'a>(rc: &'a Rc<UnsafeCell<SchedulerAlgorithm<'futures>>>)->&'a mut SchedulerAlgorithm<'futures>{

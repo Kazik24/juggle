@@ -39,6 +39,7 @@ impl<'a> DynamicFuture<'a>{
     }
     //unsafe cause this future can be pinned as local variable on stack, and we erase its lifetime so
     //that that it need to be ensured that this object is not used after that variable gets dropped.
+    //todo might be used in the future
     #[allow(unused)]
     pub unsafe fn new_static(future: Pin<&mut (dyn Future<Output=()> + 'a)>,
                              global: Arc<AtomicWakerRegistry>,suspended: bool)->Self{
