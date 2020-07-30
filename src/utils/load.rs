@@ -3,18 +3,18 @@ use core::task::{Context, Poll};
 use core::pin::Pin;
 use alloc::rc::Rc;
 use core::cell::RefCell;
-use crate::utils::{StdTiming, TimerClock, TimingGroup};
+use crate::utils::{TimerClock, TimingGroup};
 
 
 struct GenericLoadBalance<F: Future,I: TimerClock>{
     index: usize,
-    group: Rc<(RefCell<TimingGroup<I>>,I)>,
+    group: Rc<(RefCell<TimingGroup<I::Duration>>,I)>,
     future: F,
 }
 
 
 impl<F: Future,I: TimerClock> GenericLoadBalance<F,I>{
-    pub fn new_with(prop: u8,future: F,clk: I)->Self{
+    pub fn new_with(prop: u16,future: F,clk: I)->Self{
         let mut group = TimingGroup::new();
         let key = group.add(prop);
         Self{
@@ -23,7 +23,7 @@ impl<F: Future,I: TimerClock> GenericLoadBalance<F,I>{
             future
         }
     }
-    pub fn add<G>(&mut self,prop: u8,future: G)->GenericLoadBalance<G,I> where G: Future{
+    pub fn add<G>(&mut self,prop: u16,future: G)->GenericLoadBalance<G,I> where G: Future{
         let index = self.group.0.borrow_mut().add(prop);
         GenericLoadBalance{
             index,
@@ -68,20 +68,23 @@ impl<F: Future,I: TimerClock> Future for GenericLoadBalance<F,I>{
 /// into parts for each task. Some task can therefore have assigned more time than the others, e.g if
 /// you have 2 tasks, first with 1 time slot and second with 2, then let them run for 3 seconds, first
 /// task will be running 1 second from this time and second task - 2 seconds.
+#[cfg(feature = "std")]
 pub struct LoadBalance<F: Future>{
-    inner: GenericLoadBalance<F,StdTiming>,
+    inner: GenericLoadBalance<F,crate::utils::StdTiming>,
 }
+#[cfg(feature = "std")]
 impl<F: Future> LoadBalance<F>{
     /// Create new load balancing group with one future in it and given number of time slots assigned to it.
-    pub fn with(prop: u8,future: F)->Self{
-        Self{inner: GenericLoadBalance::new_with(prop,future,StdTiming::default())}
+    pub fn with(prop: u16,future: F)->Self{
+        Self{inner: GenericLoadBalance::new_with(prop,future,crate::utils::StdTiming::default())}
     }
     /// Add future to this load balancing group with given number of time slots assigned. Returned wrapper
     /// also belongs to the same group as this wrapper.
-    pub fn add<G>(&mut self,prop: u8,future: G)->LoadBalance<G> where G: Future{
+    pub fn add<G>(&mut self,prop: u16,future: G)->LoadBalance<G> where G: Future{
         LoadBalance{inner:self.inner.add(prop,future)}
     }
 }
+#[cfg(feature = "std")]
 impl<F: Future> Future for LoadBalance<F>{
     type Output = F::Output;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {

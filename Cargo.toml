@@ -3,8 +3,18 @@ name = "juggle"
 version = "0.1.0"
 authors = ["Kazik24 <kazik24official@gmail.com>"]
 edition = "2018"
+description = "Async task switching for single threaded environments."
+documentation = "https://docs.rs/juggle"
+readme = "README.md"
+homepage = "https://github.com/Kazik24/juggle"
+repository = "https://github.com/Kazik24/juggle"
+license = "MIT OR Apache-2.0"
+keywords = ["async", "future", "single-thread", "non-preemptive", "schedule"]
+categories = ["asynchronous", "embedded", "no-std"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["std"]
+std = []
 
 [dependencies]
 

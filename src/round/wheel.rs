@@ -6,7 +6,7 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::*;
 use core::fmt::{Display, Formatter};
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 
 /// Single-thread async task scheduler with dynamic task state control.

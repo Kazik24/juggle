@@ -1,57 +1,66 @@
-use std::time::{Instant, Duration};
-use std::ops::{Add, Div, Mul, Sub};
+use core::time::Duration;
+use core::ops::{Add, Div, Mul, Sub};
 use crate::chunk_slab::ChunkSlab;
-use std::cmp::max;
-use std::fmt::Debug;
+use core::cmp::max;
+use core::fmt::Debug;
 
 
 
 pub(crate) trait TimerClock{
-    type Duration: Copy + Ord + Add<Output=Self::Duration> + Sub<Output=Self::Duration> + Default;
+    type Duration: TimerCount;
     type Instant;
     fn start(&self)->Self::Instant;
     fn stop(&self,start: Self::Instant)->Self::Duration;
-    fn div_duration(dur: Self::Duration,by: u8)->Self::Duration;
-    fn mul_duration(dur: Self::Duration,by: u8)->Self::Duration;
-    fn mul_percent(dur: Self::Duration,percent: u8)->Self::Duration;
+}
+
+impl TimerCount for Duration{
+    fn div_duration(self, by: u16) -> Self { self.div(by as u32) }
+    fn mul_duration(self, by: u16) -> Self { self.mul(by as u32) }
+    fn mul_percent(self, percent: u16) -> Self { self.mul_f32(percent as f32 / 100.0) }
+}
+
+pub trait TimerCount: Copy + Ord + Add<Output=Self> + Sub<Output=Self> + Default{
+    fn div_duration(self,by: u16)->Self;
+    fn mul_duration(self,by: u16)->Self;
+    fn mul_percent(self,percent: u16)->Self;
 }
 
 
-pub(crate) struct TimingGroup<I: TimerClock>{
-    info: ChunkSlab<usize,TimeEntry<I::Duration>>,
-    max: I::Duration,
+pub struct TimingGroup<C: TimerCount>{
+    info: ChunkSlab<usize,TimeEntry<C>>,
+    max: C,
 }
 #[derive(Debug,Copy,Clone)]
 struct TimeEntry<D>{
     sum: D,
-    proportion: u8,
+    proportion: u16,
     //above_threshold: bool,
 }
 
-impl<I: TimerClock> TimingGroup<I>{
+impl<C: TimerCount> TimingGroup<C>{
 
     pub fn new()->Self{
         Self{
             info: ChunkSlab::new(),
-            max: I::Duration::default(),
+            max: C::default(),
         }
     }
 
-    pub fn add(&mut self,proportion: u8)->usize{
+    pub fn add(&mut self,proportion: u16)->usize{
         self.info.insert(TimeEntry{
             proportion,
-            sum: I::Duration::default(),
+            sum: C::default(),
             //above_threshold: false,
         })
     }
     pub fn remove(&mut self,key: usize){ self.info.remove(key); }
     #[allow(dead_code)]
-    pub fn get_slot_count(&self,key: usize)->Option<u8>{ self.info.get(key).map(|v|v.proportion) }
+    pub fn get_slot_count(&self,key: usize)->Option<u16>{ self.info.get(key).map(|v|v.proportion) }
 
     #[allow(dead_code)]
     pub fn clear(&mut self){
         self.info.clear();
-        self.max = I::Duration::default();
+        self.max = C::default();
     }
 
     pub fn can_execute(&self,key: usize)->bool{
@@ -63,7 +72,7 @@ impl<I: TimerClock> TimingGroup<I>{
                 return false;
             }
         }
-        let min_bound = I::mul_percent(self.max,90);
+        let min_bound = self.max.mul_percent(90);
         //there is at least one element in slab
         let min_time = self.info.iter().map(|(_,v)|Self::get_proportional(v)).min().unwrap();
         if min_time <= min_bound { //should execute tasks that are starved
@@ -73,36 +82,33 @@ impl<I: TimerClock> TimingGroup<I>{
         true
     }
 
-    pub fn update_duration(&mut self,key: usize,dur: I::Duration){
+    pub fn update_duration(&mut self,key: usize,dur: C){
         let this = self.info.get_mut(key).expect("Error: unknown key passed to TimingGroup::update_duration");
         this.sum = this.sum + dur;
         self.max = max(self.max,Self::get_proportional(this));
         let min_time = self.info.iter().map(|(_,v)|Self::get_proportional(v)).min().unwrap();
-        if min_time != I::Duration::default() && false{
+        if min_time != C::default() && false{
             self.max = self.max - min_time;
             for (_,entry) in self.info.iter_mut() { //offset all by disproportion
-                entry.sum = entry.sum - I::mul_duration(min_time,entry.proportion);
+                entry.sum = entry.sum - min_time.mul_duration(entry.proportion);
             }
         }
     }
 
-    fn get_proportional(entry: &TimeEntry<I::Duration>)->I::Duration{
-        I::div_duration(entry.sum,entry.proportion)
+    fn get_proportional(entry: &TimeEntry<C>)->C{
+        entry.sum.div_duration(entry.proportion)
     }
 }
+
 #[derive(Default)]
-pub(crate) struct StdTiming;
+#[cfg(feature = "std")]
+pub struct StdTiming;
+#[cfg(feature = "std")]
 impl TimerClock for StdTiming{
     type Duration = Duration;
-    type Instant = Instant;
+    type Instant = std::time::Instant;
     #[inline]
-    fn start(&self)->Self::Instant{ Instant::now() }
+    fn start(&self)->Self::Instant{ std::time::Instant::now() }
     #[inline]
-    fn stop(&self,start: Self::Instant)->Self::Duration{ Instant::now() - start }
-    #[inline]
-    fn div_duration(dur: Self::Duration, by: u8) -> Self::Duration { dur.div(by as u32) }
-    #[inline]
-    fn mul_duration(dur: Self::Duration, by: u8) -> Self::Duration { dur.mul(by as u32) }
-    #[inline]
-    fn mul_percent(dur: Self::Duration,percent: u8)->Self::Duration{ dur.mul_f32(percent as f32 / 100.0) }
+    fn stop(&self,start: Self::Instant)->Self::Duration{ std::time::Instant::now() - start }
 }

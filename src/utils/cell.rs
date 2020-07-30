@@ -148,6 +148,7 @@ impl<T> Drop for AtomicCell<T>{
 
 #[cfg(test)]
 mod test{
+    extern crate std;
     use std::sync::{Arc, Barrier};
     use super::*;
     use std::thread::spawn;
@@ -156,6 +157,7 @@ mod test{
     use std::hash::{Hasher, Hash};
     use std::num::*;
     use std::mem::replace;
+    use std::prelude::v1::*;
 
     fn test_swap_many_case<T,F>(threads: u64, per_thread: u64, mut factory: impl FnMut(u64)->T,op: F)
     where T: Send + Sync + Eq + Hash + 'static,

@@ -15,7 +15,7 @@ fn long_operation(milis: u64)->Duration{
     Instant::now() - start
 }
 
-async fn load_task(index: usize,presets: &[(u8,fn(usize)->u64)],results: &[Cell<Duration>]){
+async fn load_task(index: usize,presets: &[(u16,fn(usize)->u64)],results: &[Cell<Duration>]){
     loop{
         let time = long_operation(presets[index].1(index));
         let v = results[index].get();
@@ -30,7 +30,7 @@ async fn control_task(handle: WheelHandle<'_>,to_cancel: Vec<IdNum>,total: u64){
     to_cancel.iter().for_each(|&id|{ handle.cancel(id); });
 }
 
-fn load_balance_tasks(total: u64,presets: &[(u8,fn(usize)->u64)])->Vec<u64>{
+fn load_balance_tasks(total: u64,presets: &[(u16,fn(usize)->u64)])->Vec<u64>{
     let results = presets.iter().map(|_|Cell::new(Duration::default())).collect::<Vec<_>>();
 
     if let Some((first,rest)) = presets.split_first(){
@@ -64,7 +64,7 @@ fn calc_avg_std(arr: &[u64])->(i64,u64){
     (avg,std)
 }
 
-fn filter_results(presets: &[(u8,fn(usize)->u64)],results: &[u64])->HashMap<u8,Vec<u64>>{
+fn filter_results(presets: &[(u16,fn(usize)->u64)],results: &[u64])->HashMap<u16,Vec<u64>>{
     let mut map = HashMap::new();
     for (&p,&r) in presets.iter().zip(results.iter()){
         let arr = map.entry(p.0).or_insert(Vec::new());
@@ -72,7 +72,7 @@ fn filter_results(presets: &[(u8,fn(usize)->u64)],results: &[u64])->HashMap<u8,V
     }
     map
 }
-fn combine_results(res: &[HashMap<u8,Vec<u64>>])->HashMap<u8,Vec<u64>>{
+fn combine_results(res: &[HashMap<u16,Vec<u64>>])->HashMap<u16,Vec<u64>>{
     let mut map = HashMap::new();
     for m in res {
         for (&k,v) in m.iter() {
@@ -89,7 +89,7 @@ fn combine_results(res: &[HashMap<u8,Vec<u64>>])->HashMap<u8,Vec<u64>>{
 }
 
 #[allow(dead_code)]
-fn print_results(map: &BTreeMap<u8,(u64,u64,Vec<u64>)>,sigma: f64){
+fn print_results(map: &BTreeMap<u16,(u64,u64,Vec<u64>)>,sigma: f64){
     for (&k,v) in map.iter(){
         let deviation = v.1 as f64 * sigma;
         let p = if v.0 <= 0 { 0.0 } else { deviation / v.0 as f64 };
@@ -98,7 +98,7 @@ fn print_results(map: &BTreeMap<u8,(u64,u64,Vec<u64>)>,sigma: f64){
     }
 }
 
-fn perform_test(presets: &[(u8,fn(usize)->u64)],sigma: f64,threads: usize,time_ms: usize){
+fn perform_test(presets: &[(u16,fn(usize)->u64)],sigma: f64,threads: usize,time_ms: usize){
     let handles = (0..threads).map(|_|{
         let p = presets.to_vec();
         spawn(move||load_balance_tasks(5000,&p))
@@ -122,7 +122,7 @@ fn perform_test(presets: &[(u8,fn(usize)->u64)],sigma: f64,threads: usize,time_m
 
 #[test]
 fn test_load_balancing(){
-    let mut presets: Vec<(u8,fn(usize)->u64)> = Vec::new();
+    let mut presets: Vec<(u16,fn(usize)->u64)> = Vec::new();
     presets.push((3,|_|{10}));
     presets.push((1,|_|{20}));
     presets.push((1,|_|{30}));

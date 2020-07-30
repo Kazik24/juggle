@@ -174,8 +174,10 @@ impl_key!(u8,u16,u32,usize);
 
 #[cfg(test)]
 mod tests{
+    extern crate std;
     use super::*;
     use core::fmt::*;
+    use alloc::string::String;
 
 
     fn under_test<I: ChunkSlabKey>(max_key: I)->ChunkSlab<I,i32>{
@@ -188,10 +190,10 @@ mod tests{
     #[allow(dead_code)]
     fn print_view<I: ChunkSlabKey + Debug,T: Debug>(slab: &ChunkSlab<I,T>)->String{
         slab.entries.iter().map(|e|{
-            format!("Chunk[{}]",e.data.iter().map(|e|{
+            std::format!("Chunk[{}]",e.data.iter().map(|e|{
                 match e {
-                    Entry::Full(v) => format!("Full({:?})",v),
-                    Entry::Empty(v) => format!("Empt({:?})",v),
+                    Entry::Full(v) => alloc::format!("Full({:?})",v),
+                    Entry::Empty(v) => alloc::format!("Empt({:?})",v),
                 }
             }).collect::<Vec<_>>().join(", "))
         }).collect::<Vec<_>>().join("\n")
@@ -223,7 +225,7 @@ mod tests{
     }
     #[test]
     fn test_part_fill(){
-        for val in vec![2u8,7,15,16,17,31,32,33,100,200] {
+        for val in alloc::vec![2u8,7,15,16,17,31,32,33,100,200] {
             let mut slab = under_test(val);
             for i in 0..=255{
                 if i <= val {
@@ -252,7 +254,7 @@ mod tests{
         assert_eq!(slab.get(k5),Some(&50));
         slab.clear();
         assert_eq!(slab.len(),0);
-        println!("Keys: {},{},{},{},{}",k1,k2,k3,k4,k5);
+        std::println!("Keys: {},{},{},{},{}",k1,k2,k3,k4,k5);
         assert_eq!(slab.get(k1),None);
         assert_eq!(slab.get(k2),None);
         assert_eq!(slab.get(k3),None);

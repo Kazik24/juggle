@@ -14,9 +14,10 @@ mod load;
 mod timing;
 
 pub use cell::AtomicCell;
+#[cfg(feature = "std")]
 pub use load::LoadBalance;
-pub(crate) use timing::*;
-use std::ptr::null;
+pub use timing::*;
+use core::ptr::null;
 
 
 /// Implement this trait if you want to create custom waker with [to_waker](fn.to_waker.html) function.

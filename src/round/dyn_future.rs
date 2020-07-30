@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use crate::utils::{AtomicWakerRegistry, to_waker, DynamicWake};
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::pin::Pin;
-use std::ops::Deref;
+use core::ops::Deref;
 
 pub(crate) struct DynamicFuture<'a>{ //not send not sync
     pinned_future: NonNull<dyn Future<Output=()> + 'a>,

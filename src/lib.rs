@@ -4,6 +4,7 @@
 //!
 
 #![warn(missing_docs)]
+//#![no_std]
 
 extern crate alloc;
 
@@ -13,9 +14,9 @@ mod chunk_slab;
 mod yield_helper;
 mod block;
 
-pub use self::yield_helper::Yield;
+pub use self::yield_helper::{Yield, YieldTimes, YieldUntil};
 pub use self::round::{Wheel, WheelHandle, LockedWheel, IdNum, SpawnParams, State, SuspendError};
-pub use self::block::*;
+pub use self::block::spin_block_on;
 
 
 /// Yield current task. Gives the sheduler opportunity to switch to another task.
@@ -88,8 +89,9 @@ pub(crate) mod test_util{
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread::{spawn, sleep};
     use std::time::Duration;
+    use std::prelude::v1::*;
 
-    thread_local!{
+    std::thread_local!{
         static BREAK_CONTEXT: Cell<Option<NonNull<Breakpoints>>> = Cell::new(None);
     }
     macro_rules! test_break{
@@ -180,7 +182,7 @@ pub(crate) mod test_util{
         let _guard = bry.register();
         sleep(Duration::from_millis(100));
 
-        let check = vec![0,1,2].into_iter().collect::<HashSet<_>>();
+        let check = alloc::vec![0,1,2].into_iter().collect::<HashSet<_>>();
         assert_eq!(check,brx.get_held().into_iter().collect());
         assert_eq!(check,bry.get_held().into_iter().collect());
 
