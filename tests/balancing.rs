@@ -1,5 +1,5 @@
 use juggle::*;
-use juggle::utils::LoadBalance;
+use juggle::utils::{LoadBalance, StdTimerClock};
 use std::time::{Instant, Duration};
 use std::thread::{sleep, spawn};
 use rand::Rng;
@@ -36,7 +36,7 @@ fn load_balance_tasks(total: u64,presets: &[(u16,fn(usize)->u64)])->Vec<u64>{
     if let Some((first,rest)) = presets.split_first(){
         let wheel = Wheel::new();
         let handle = wheel.handle();
-        let mut group = LoadBalance::with(first.0,load_task(0,presets,&results));
+        let mut group = LoadBalance::with(StdTimerClock, first.0, load_task(0, presets, &results));
         let mut ids = Vec::new();
         for (index,(prop,_)) in rest.iter().enumerate(){
             let index = index + 1; //cause first is already taken
