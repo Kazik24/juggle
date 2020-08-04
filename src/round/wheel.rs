@@ -107,10 +107,14 @@ impl<'futures> Wheel<'futures>{
     ///
     /// Transforms this instance into [LockedWheel](struct.LockedWheel.html) which is similar to
     /// [Wheel](struct.Wheel.html) but has no way of controlling tasks within it.
+    ///
+    /// # Panics
+    /// Panics if this method was called inside handle's method such as
+    /// [with_name](struct.WheelHandle.html#method.with_name).
     pub fn lock(self)->LockedWheel<'futures>{
-        // no panic cause rc has always strong count of 1 (it can have strong count > 1 during calls
+        // rc has always strong count of 1 (it can have strong count > 1 during calls
         // on handle, but if these calls return then it will be back to 1)
-        let alg = Rc::try_unwrap(self.ptr).ok().unwrap().into_inner();
+        let alg = Rc::try_unwrap(self.ptr).ok().expect("Cannot lock inside call to handle's method.").into_inner();
         LockedWheel{alg}
     }
 }

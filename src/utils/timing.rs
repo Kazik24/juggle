@@ -3,6 +3,7 @@ use core::ops::{Add, Div, Mul, Sub};
 use crate::chunk_slab::ChunkSlab;
 use core::cmp::max;
 use core::fmt::Debug;
+use core::num::NonZeroU16;
 
 
 
@@ -14,24 +15,27 @@ pub trait TimerClock{
 }
 
 impl TimerCount for Duration{
-    fn div_by(self, by: u16) -> Self { self.div(by as u32) }
-    fn mul_by(self, by: u16) -> Self { self.mul(by as u32) }
+    fn div_by(self, by: NonZeroU16) -> Self { self.div(by.get() as u32) }
+    fn mul_by(self, by: NonZeroU16) -> Self { self.mul(by.get() as u32) }
 }
 
 macro_rules! impl_count {
     ($($name:ident),*) => {
         $(impl TimerCount for $name{
-            fn div_by(self, by: u16) -> Self { self.div(by as Self) }
-            fn mul_by(self, by: u16) -> Self { self.mul(by as Self) }
+            fn div_by(self, by: NonZeroU16) -> Self { self.div(by.get() as Self) }
+            fn mul_by(self, by: NonZeroU16) -> Self { self.mul(by.get() as Self) }
         })*
     }
 }
 // implement TimerCount for all integers except u8/i8
 impl_count!(u16,i16,u32,i32,u64,i64,u128,i128,usize,isize);
 
+/// Trait implemented by data types that can be used to measure time in arbitrary units.
 pub trait TimerCount: Copy + Ord + Add<Output=Self> + Sub<Output=Self> + Default{
-    fn div_by(self,by: u16)->Self;
-    fn mul_by(self,by: u16)->Self;
+    /// Divide count by specified value that is not zero.
+    fn div_by(self,by: NonZeroU16)->Self;
+    /// Multiply count by specified value that is not zero.
+    fn mul_by(self,by: NonZeroU16)->Self;
 }
 
 
@@ -42,7 +46,7 @@ pub struct TimingGroup<C: TimerCount>{
 #[derive(Debug,Copy,Clone)]
 struct TimeEntry<D>{
     sum: D,
-    proportion: u16,
+    proportion: NonZeroU16,
     //above_threshold: bool,
 }
 
@@ -58,7 +62,7 @@ impl<C: TimerCount> TimingGroup<C>{
 
     /// Add entry to timing group with specific number of time slots and obtain its key.
     pub fn add(&mut self,proportion: u16)->usize{
-        if proportion == 0 {panic!("Time slot count is zero.")}
+        let proportion = NonZeroU16::new(proportion).expect("Time slot count is zero.");
         self.info.insert(TimeEntry{
             proportion,
             sum: C::default(),
@@ -71,7 +75,7 @@ impl<C: TimerCount> TimingGroup<C>{
     /// Panics if provided key has no associated entry.
     pub fn remove(&mut self,key: usize){ self.info.remove(key); }
     /// Returns time slot count for given key or None if this key is invalid.
-    pub fn get_slot_count(&self,key: usize)->Option<u16>{ self.info.get(key).map(|v|v.proportion) }
+    pub fn get_slot_count(&self,key: usize)->Option<u16>{ self.info.get(key).map(|v|v.proportion.get()) }
     /// Remove all entries from this group and reset its state.
     pub fn clear(&mut self){
         self.info.clear();
@@ -88,7 +92,8 @@ impl<C: TimerCount> TimingGroup<C>{
                 return false;
             }
         }
-        let min_bound = self.max.mul_by(9).div_by(10); // multiply by 0.9
+        // multiply max by 0.9
+        let min_bound = self.max.mul_by(NonZeroU16::new(9).unwrap()).div_by(NonZeroU16::new(10).unwrap());
         //there is at least one element in slab
         let min_time = self.info.iter().map(|(_,v)|Self::get_proportional(v)).min().unwrap();
         if min_time <= min_bound { //should execute tasks that are starved

@@ -47,3 +47,28 @@ pub fn test_round_robin(){
     println!("Valid: {}",handle.is_valid());
     println!("Finished round robin.");
 }
+
+#[test]
+fn test_drop_with_name(){
+    let wheel = Wheel::new();
+    let handle = wheel.handle().clone();
+    let id = handle.spawn("some name",async move {}).unwrap();
+    handle.with_name(id,|str|{
+        drop(wheel);//drop wheel
+        assert!(handle.is_valid());//handle must be valid because with_name didn't finish execution
+        assert_eq!(str,Some("some name"));
+    });
+    assert!(!handle.is_valid());//now it should be invalidated.
+}
+
+#[test]
+#[should_panic]
+fn test_lock_with_name(){
+    let wheel = Wheel::new();
+    let handle = wheel.handle().clone();
+    let id = handle.spawn("some name",async move {}).unwrap();
+    handle.with_name(id,|str|{
+        assert_eq!(str,Some("some name"));
+        wheel.lock();//this should panic!
+    });
+}

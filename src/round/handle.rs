@@ -31,7 +31,7 @@ impl IdNum{
 }
 impl Debug for IdNum {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f,"IdNum[0x{:X}]",self.0.get() - 1)
+        write!(f,"IdNum[0x{:X}]",self.to_usize())
     }
 }
 
@@ -211,14 +211,8 @@ impl<'futures> WheelHandle<'futures>{
     /// id has no assigned task or this handle is invalid. Returns result of function call.
     pub fn with_name<F,T>(&self, id: IdNum, func: F) ->T where F: FnOnce(Option<&str>)->T{
         unwrap_weak!(self,this,func(None));
-        match this.get_dynamic(id.to_usize()) {
-            Some(v) => match v.get_name_str() {
-                Some(s) => return func(Some(s)),
-                None => {},
-            }
-            None => {},
-        }
-        func(None)
+        let arg = this.get_dynamic(id.to_usize()).map(|v|v.get_name_str()).flatten();
+        func(arg)
     }
     /// Returns name of current task as new String.
     /// Returns None when:
