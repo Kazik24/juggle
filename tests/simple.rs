@@ -1,6 +1,9 @@
 use juggle::*;
 use std::time::Duration;
 use rand::Rng;
+use juggle::utils::AtomicCell;
+use std::task::{Waker, Context, Poll};
+use std::future::Future;
 
 
 async fn waiting_task(handle: WheelHandle<'_>){
@@ -67,8 +70,7 @@ fn test_lock_with_name(){
     let wheel = Wheel::new();
     let handle = wheel.handle().clone();
     let id = handle.spawn("some name",async move {}).unwrap();
-    handle.with_name(id,|str|{
-        assert_eq!(str,Some("some name"));
+    handle.with_name(id,|_|{
         wheel.lock();//this should panic!
     });
 }

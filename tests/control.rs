@@ -7,6 +7,8 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::task::{Waker, Context, Poll};
 use std::pin::Pin;
+use juggle::utils::noop_waker;
+use std::process::abort;
 
 async fn panic_if(do_panic: &Cell<bool>){
     loop{
@@ -95,29 +97,42 @@ async fn self_suspend(handle: WheelHandle<'_>, after: usize){
     handle.suspend(id);
 }
 
-fn signal_after(dur: Duration)-> impl Future<Output=()>{
-    struct Signal(Arc<Mutex<(Option<Waker>,bool)>>);
-    impl Future for Signal{
-        type Output = ();
-        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            let mut guard = self.0.lock().unwrap();
-            if guard.1 { Poll::Ready(()) }
-            else{
-                guard.0 = Some(cx.waker().clone());
-                Poll::Pending
-            }
+#[derive(Clone)]
+struct Signal(Arc<Mutex<(Option<Waker>,bool,usize)>>);
+impl Future for Signal{
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut guard = self.0.lock().unwrap();
+        guard.2 += 1; //inc poll count
+        if guard.1 {
+            guard.1 = false; //reset signal
+            guard.0 = None;
+            Poll::Ready(())
+        }
+        else{
+            guard.0 = Some(cx.waker().clone());
+            Poll::Pending
         }
     }
-
-    let ptr = Arc::new(Mutex::new((None,false)));
-    let result = Signal(ptr.clone());
-    spawn(move||{
-        sleep(dur);
-        let mut guard = ptr.lock().unwrap();
-        guard.1 = true;
+}
+impl Signal{
+    pub fn new()->Self{Self(Arc::new(Mutex::new((None,false,0))))}
+    pub fn poll_count(&self)->usize{ self.0.lock().unwrap().2 }
+    pub fn signal(&self,full: bool){
+        let mut guard = self.0.lock().unwrap();
+        guard.1 = full;
         if let Some(waker) = guard.0.take() {
             waker.wake();
         }
+    }
+}
+
+fn signal_after(dur: Duration)-> impl Future<Output=()>{
+    let result = Signal::new();
+    let ptr = result.clone();
+    spawn(move||{
+        sleep(dur);
+        ptr.signal(true);
     });
     result
 }
@@ -169,4 +184,90 @@ fn test_suspend_error(){
     smol::block_on(wheel).expect_err("Error was expected instead of success.");
     //assert all critical points were reached
     assert_flags.iter().for_each(|c|assert!(c.get()));
+}
+
+#[test]
+fn test_signal(){
+    let mut val = Box::pin(Signal::new());
+    assert_eq!(val.poll_count(),0);
+    val.signal(true);
+    let waker = noop_waker();
+    let ctx = &mut Context::from_waker(&waker);
+    assert_eq!(val.as_mut().poll(ctx),Poll::Ready(()));
+    assert_eq!(val.poll_count(),1);
+    assert_eq!(Box::pin(Signal::new()).as_mut().poll(ctx),Poll::Pending);
+
+}
+#[test]
+fn test_ready_task(){
+    let signal = Signal::new();
+    signal.signal(true); //make ready
+    let wheel = Wheel::new();
+    let ready = wheel.handle().spawn(SpawnParams::default(),signal.clone()).unwrap();
+    let handle = wheel.handle().clone();
+    assert_eq!(signal.poll_count(),0);
+    assert_eq!(handle.get_state(ready),State::Runnable);
+    wheel.handle().spawn(SpawnParams::default(),async move {
+        yield_once!();
+        assert_eq!(handle.get_state(ready),State::Unknown);
+        yield_once!();
+    }).unwrap();
+    smol::block_on(wheel).unwrap();
+    assert_eq!(signal.poll_count(),1);
+}
+
+#[test]
+fn test_waiting(){
+    let signal = Signal::new();
+    let wheel = Wheel::new();
+    let waiting = wheel.handle().spawn(SpawnParams::default(),signal.clone()).unwrap();
+    let handle = wheel.handle().clone();
+    assert_eq!(handle.get_state(waiting),State::Runnable);//just created
+    let ctrl = wheel.handle().spawn(SpawnParams::default(),async move {
+        yield_once!();//wait for polling 'waiting' at least once.
+        assert_eq!(handle.get_state(waiting),State::Waiting);
+        assert_eq!(signal.poll_count(),1);
+        handle.suspend(waiting);
+        yield_once!();
+        assert_eq!(handle.get_state(waiting),State::Suspended);
+        assert_eq!(signal.poll_count(),1);
+        Yield::times(10).await;
+        assert_eq!(signal.poll_count(),1);
+        handle.resume(waiting);
+        assert_eq!(handle.get_state(waiting),State::Waiting);
+        yield_once!();
+        assert_eq!(signal.poll_count(),1);
+        assert_eq!(handle.get_state(waiting),State::Waiting);
+        signal.signal(false);
+        assert_eq!(handle.get_state(waiting),State::Runnable);
+        Yield::times(2).await;
+        assert_eq!(signal.poll_count(),2);
+        assert_eq!(handle.get_state(waiting),State::Waiting);
+        signal.signal(true);
+        assert_eq!(handle.get_state(waiting),State::Runnable);
+        Yield::times(2).await;
+        assert_eq!(signal.poll_count(),3);
+        assert_eq!(handle.get_state(waiting),State::Unknown);//task completed
+    }).unwrap();
+    assert_ne!(waiting,ctrl);
+
+    smol::block_on(wheel).unwrap();
+}
+
+
+#[test]
+fn test_suspend_waiting(){
+    let signal = Signal::new();
+    let wheel = Wheel::new();
+    let waiting = wheel.handle().spawn(SpawnParams::default(),signal.clone()).unwrap();
+    let handle = wheel.handle().clone();
+    wheel.handle().spawn(SpawnParams::default(),async move {
+        yield_once!();
+        assert_eq!(signal.poll_count(),1);
+        assert_eq!(handle.get_state(waiting),State::Waiting);
+        //after this task finishes 'waiting' should be only one task in scheduler.
+        handle.suspend(waiting);
+    }).unwrap();
+    smol::block_on(wheel).expect_err("Expected SuspendError");
+    //assert!(false);
 }

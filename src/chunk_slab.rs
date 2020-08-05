@@ -68,40 +68,37 @@ impl<I: ChunkSlabKey,T> ChunkSlab<I,T>{
             let prev = replace(&mut chunk.data[key.into_index() % CHUNK_SIZE], Entry::Full(val));
 
             match prev {
-                Entry::Empty(next) => {
-                    self.next = next;
-                }
+                Entry::Empty(next) => self.next = next,
                 _ => unreachable!(),
             }
         }
         key
     }
 
-    pub fn remove(&mut self, key: I) -> T {
-        let chunk = self.entries.get_mut(key.into_index() / CHUNK_SIZE).expect("Invalid key");
-        let sub_idx = key.into_index() % CHUNK_SIZE;
-        let prev = replace(&mut chunk.data[sub_idx], Entry::Empty(self.next));
+    pub fn remove(&mut self, key: I) -> Option<T> {
+        let chunk = self.entries.get_mut(key.into_index() / CHUNK_SIZE)?;
+        let sub_idx = key.into_index() % CHUNK_SIZE; //cannot cause IOOB when accessing chunk.data
 
-        match prev {
+        match replace(&mut chunk.data[sub_idx], Entry::Empty(self.next)) {
             Entry::Full(val) => {
                 self.len -= 1;
                 self.next = key;
-                val
+                Some(val)
             }
-            _ => {
+            prev => {
                 // entry is empty, restore state
                 chunk.data[sub_idx] = prev;
-                panic!("Invalid key");
+                None
             }
         }
     }
-    #[allow(dead_code)]
+
     pub fn clear(&mut self){
         self.entries.clear();
         self.len = 0;
         self.next = I::zero();
     }
-    #[allow(dead_code)]
+
     pub fn len(&self)->usize{self.len}
     pub fn get(&self,key: I)->Option<&T>{
         match self.entries.get(key.into_index() / CHUNK_SIZE) {
@@ -225,7 +222,7 @@ mod tests{
     }
     #[test]
     fn test_part_fill(){
-        for val in alloc::vec![2u8,7,15,16,17,31,32,33,100,200] {
+        for val in [2u8,7,15,16,17,31,32,33,100,200].iter().copied() {
             let mut slab = under_test(val);
             for i in 0..=255{
                 if i <= val {
@@ -245,8 +242,10 @@ mod tests{
         let k2 = slab.insert(20);
         let k3 = slab.insert(30);
         assert_eq!(slab.len(),3);
-        assert_eq!(slab.remove(k2),20);
-        assert_eq!(slab.remove(k1),10);
+        assert_eq!(slab.remove(k2),Some(20));
+        assert_eq!(slab.remove(k2),None);
+        assert_eq!(slab.remove(k1),Some(10));
+        assert_eq!(slab.remove(k1),None);
         assert_eq!(slab.len(),1);
         let k4 = slab.insert(40);
         let k5 = slab.insert(50);
@@ -254,7 +253,6 @@ mod tests{
         assert_eq!(slab.get(k5),Some(&50));
         slab.clear();
         assert_eq!(slab.len(),0);
-        std::println!("Keys: {},{},{},{},{}",k1,k2,k3,k4,k5);
         assert_eq!(slab.get(k1),None);
         assert_eq!(slab.get(k2),None);
         assert_eq!(slab.get(k3),None);

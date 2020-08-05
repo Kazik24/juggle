@@ -88,3 +88,60 @@ impl AtomicWakerRegistry{
         }
     }
 }
+
+#[cfg(test)]
+mod tests{
+    use super::*;
+    use std::sync::atomic::*;
+
+    const WAKE: usize = 1;
+    const DROP: usize = 2;
+    struct TestWake(pub Arc<AtomicUsize>); //because Send Sync
+    impl DynamicWake for TestWake{
+        fn wake(&self) { self.0.fetch_or(WAKE,Ordering::SeqCst); }
+    }
+    impl Drop for TestWake{
+        fn drop(&mut self) { self.0.fetch_or(DROP,Ordering::SeqCst); }
+    }
+    #[test]
+    fn test_waker_drop_clone(){
+        let test = Arc::new(AtomicUsize::new(0));
+        let inner = Arc::new(TestWake(test.clone()));
+        let waker = to_waker(inner.clone());
+        assert_eq!(Arc::strong_count(&inner),2);
+        assert_eq!(test.load(Ordering::SeqCst),0);
+        let other = waker.clone();
+        assert_eq!(Arc::strong_count(&inner),3);
+        drop(waker);
+        assert_eq!(Arc::strong_count(&inner),2);
+        drop(other);
+        assert_eq!(Arc::strong_count(&inner),1);
+        let waker = to_waker(inner);
+        assert_eq!(test.load(Ordering::SeqCst),0);
+        drop(waker);
+        assert_eq!(test.load(Ordering::SeqCst),DROP);
+    }
+    #[test]
+    fn test_waker_wake(){
+        let test = Arc::new(AtomicUsize::new(0));
+        let inner = Arc::new(TestWake(test.clone()));
+        let waker = to_waker(inner.clone());
+        waker.wake_by_ref();
+        assert_eq!(test.load(Ordering::SeqCst),WAKE);
+        assert_eq!(Arc::strong_count(&inner),2);
+        test.store(0,Ordering::SeqCst);
+        assert_eq!(test.load(Ordering::SeqCst),0);
+        waker.wake();
+        assert_eq!(test.load(Ordering::SeqCst),WAKE);
+        assert_eq!(Arc::strong_count(&inner),1);
+        test.store(0,Ordering::SeqCst);
+        let waker = to_waker(inner);
+        waker.wake_by_ref();
+        assert_eq!(test.load(Ordering::SeqCst),WAKE);
+        test.store(0,Ordering::SeqCst);
+        assert_eq!(test.load(Ordering::SeqCst),0);
+        test.store(0,Ordering::SeqCst);
+        waker.wake();
+        assert_eq!(test.load(Ordering::SeqCst),WAKE | DROP);
+    }
+}

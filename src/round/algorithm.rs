@@ -78,9 +78,17 @@ impl<'futures> SchedulerAlgorithm<'futures>{
             Some(task) if task.is_suspended() => {
                 task.set_suspended(false);
                 self.suspended_count -= 1;
-                // suspended task always has runnable state (for now). Check if absent is needed cause
-                // some task might spam suspend-resume which will otherwise cause multiple enqueues.
-                self.enqueue_runnable(key,true);
+
+                if task.is_runnable() {
+                    // Check if absent is needed cause some task might spam suspend-resume
+                    // which will otherwise cause multiple enqueues.
+                    self.enqueue_runnable(key,true);
+                }else{//task is still waiting for sth, defer it then
+                    // Check if absent as above.
+                    if !self.deferred.contains(&key) {
+                        self.deferred.push(key);
+                    }
+                }
                 true
             }
             _ => false,
@@ -93,6 +101,14 @@ impl<'futures> SchedulerAlgorithm<'futures>{
             Some(task) if !task.is_suspended() => {
                 task.set_suspended(true);
                 self.suspended_count += 1;
+                //optimistic check, if is runnable then for sure will be removed from deferred
+                //in next iteration
+                if !task.is_runnable() {
+                    if let Some(pos) = self.deferred.iter().position(|x|*x == key) {
+                        self.deferred.remove(pos);
+                    }
+                }
+
                 true
             }
             _ => false,
@@ -263,7 +279,7 @@ impl<'futures> SchedulerAlgorithm<'futures>{
         while let Some(run_key) = from.pop_front() {
             let run_task = registry.get_mut(run_key).unwrap();
             if run_task.is_cancelled() {
-                registry.remove(run_key);
+                registry.remove(run_key).expect("Internal Error: task not found.");
                 continue; //remove from queue and registry
             }
             if run_task.is_suspended() {
@@ -283,6 +299,8 @@ impl<'futures> SchedulerAlgorithm<'futures>{
                 } else { //put it on deferred queue
                     deferred.push(run_key);
                 }
+            } else { //task was finished, remove from scheduler
+                registry.remove(run_key).expect("Internal Error: task not found.");
             }
         }
     }

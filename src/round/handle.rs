@@ -52,11 +52,13 @@ pub enum State {
     Runnable,
     /// Task is suspended and will not execute until resumed.
     Suspended,
-    /// Task is waiting for external event to wake it.
+    /// Task is waiting for external event to wake it. After waking, this task won't change state
+    /// immediately to `Runnable`.
     Waiting,
     /// Task is cancelled but was not removed form scheduler yet.
     Cancelled,
-    /// Given key has no associated task with it, or handle used to obtain state was invalid.
+    /// Given key has no associated task with it, handle used to obtain state was invalid or task
+    /// has completed and was removed from scheduler.
     Unknown,
 }
 

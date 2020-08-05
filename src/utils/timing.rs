@@ -30,7 +30,7 @@ macro_rules! impl_count {
 // implement TimerCount for all integers except u8/i8
 impl_count!(u16,i16,u32,i32,u64,i64,u128,i128,usize,isize);
 
-/// Trait implemented by data types that can be used to measure time in arbitrary units.
+/// Trait implemented by data types that can be used to measure time in abstract units.
 pub trait TimerCount: Copy + Ord + Add<Output=Self> + Sub<Output=Self> + Default{
     /// Divide count by specified value that is not zero.
     fn div_by(self,by: NonZeroU16)->Self;
@@ -61,8 +61,11 @@ impl<C: TimerCount> TimingGroup<C>{
     }
 
     /// Add entry to timing group with specific number of time slots and obtain its key.
-    pub fn add(&mut self,proportion: u16)->usize{
-        let proportion = NonZeroU16::new(proportion).expect("Time slot count is zero.");
+    ///
+    /// # Panics
+    /// Panics if time slot count argument is zero.
+    pub fn add(&mut self,slot_count: u16)->usize{
+        let proportion = NonZeroU16::new(slot_count).expect("Time slot count is zero.");
         self.info.insert(TimeEntry{
             proportion,
             sum: C::default(),
@@ -73,7 +76,15 @@ impl<C: TimerCount> TimingGroup<C>{
     ///
     /// # Panics
     /// Panics if provided key has no associated entry.
-    pub fn remove(&mut self,key: usize){ self.info.remove(key); }
+    pub fn remove(&mut self,key: usize){
+        self.info.remove(key).expect("Error: unknown key passed to TimingGroup::remove");
+    }
+    /// Checks if specific key has an entry associated to it in this group.
+    pub fn contains(&self,key: usize)->bool{
+        self.info.get(key).is_some()
+    }
+    /// Returns number of registered entries in this group.
+    pub fn count(&self)->usize{ self.info.len() }
     /// Returns time slot count for given key or None if this key is invalid.
     pub fn get_slot_count(&self,key: usize)->Option<u16>{ self.info.get(key).map(|v|v.proportion.get()) }
     /// Remove all entries from this group and reset its state.
@@ -83,6 +94,9 @@ impl<C: TimerCount> TimingGroup<C>{
     }
 
     /// Check if entry with specific key can be executed now.
+    ///
+    /// # Panics
+    /// Panics if provided key has no associated entry.
     pub fn can_execute(&self,key: usize)->bool{
         let this = *self.info.get(key).expect("Error: unknown key passed to TimingGroup::can_execute");
         let this_dur = Self::get_proportional(&this);
@@ -104,6 +118,9 @@ impl<C: TimerCount> TimingGroup<C>{
     }
 
     /// Update execution duration of entry with specific key.
+    ///
+    /// # Panics
+    /// Panics if provided key has no associated entry.
     pub fn update_duration(&mut self,key: usize,dur: C){
         let this = self.info.get_mut(key).expect("Error: unknown key passed to TimingGroup::update_duration");
         this.sum = this.sum + dur;
@@ -123,6 +140,8 @@ impl<C: TimerCount> TimingGroup<C>{
 }
 
 /// Basic instance of TimerClock implemented using `std::time::Instant::now()`.
+///
+/// Feature `std` is required to use this struct.
 #[cfg(feature = "std")]
 #[derive(Default,Clone,Eq,PartialEq,Hash,Debug)]
 pub struct StdTimerClock;
