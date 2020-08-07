@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 use std::task::{Waker, Context, Poll};
 use std::pin::Pin;
 use juggle::utils::noop_waker;
-use std::process::abort;
 
 async fn panic_if(do_panic: &Cell<bool>){
     loop{

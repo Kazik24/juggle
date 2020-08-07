@@ -48,16 +48,14 @@ impl Parker for SpinParker{
 ///         yield_once!();
 ///     }
 /// });
+/// # let handle = wheel.handle().clone();
 /// wheel.handle().spawn(SpawnParams::default(),async move {
 ///     // some other processing tasks
+/// #   Yield::times(10).await;
+/// #   handle.cancel(id.unwrap());
 /// });
-/// # let handle = wheel.handle().clone();
-/// # wheel.handle().spawn(SpawnParams::default(),async move {
-/// #     Yield::times(10).await;
-/// #     handle.cancel(id.unwrap());
-/// # });
 ///
-/// spin_block_on(wheel);
+/// spin_block_on(wheel).unwrap();
 /// ```
 pub fn spin_block_on<F>(mut future: F)->F::Output where F:Future{
     let mut pinned = unsafe{ Pin::new_unchecked(&mut future) };

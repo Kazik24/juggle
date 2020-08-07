@@ -6,7 +6,45 @@ use core::fmt::Debug;
 use core::num::NonZeroU16;
 
 
-
+/// Custom time source. Implement this trait if you want to provide your own time source for
+/// [LoadBalance](struct.LoadBalance.html) group.
+///
+/// # Examples
+/// Example implementation using some arbitrary timer.
+/// ```
+/// use juggle::utils::TimerClock;
+///
+/// # fn init_timer()->usize{0}
+/// # fn shutdown_timer(_:usize) {}
+/// # fn get_timer_value(_:usize)->u32{0}
+/// struct MyTimer{
+///     timer_id: usize,
+/// }
+///
+/// impl TimerClock for MyTimer {
+///     type Duration = u32;
+///     type Instant = u32;
+///     fn start(&self) -> Self::Instant {
+///         get_timer_value(self.timer_id)
+///     }
+///     fn stop(&self,start: Self::Instant) -> Self::Duration {
+///         get_timer_value(self.timer_id) - start
+///     }
+/// }
+///
+/// impl MyTimer{
+///     // make constructor that allocates and initializes hardware timer.
+///     pub fn new()->Self{
+///         Self{ timer_id: init_timer() }
+///     }
+/// }
+/// impl Drop for MyTimer{
+///     // release hardware resource
+///     fn drop(&mut self){
+///         shutdown_timer(self.timer_id);
+///     }
+/// }
+/// ```
 pub trait TimerClock{
     type Duration: TimerCount;
     type Instant;
@@ -150,7 +188,7 @@ impl TimerClock for StdTimerClock {
     type Duration = Duration;
     type Instant = std::time::Instant;
     #[inline]
-    fn start(&self)->Self::Instant{ std::time::Instant::now() }
+    fn start(&self)->Self::Instant{ Self::Instant::now() }
     #[inline]
-    fn stop(&self,start: Self::Instant)->Self::Duration{ std::time::Instant::now() - start }
+    fn stop(&self,start: Self::Instant)->Self::Duration{ Self::Instant::now() - start }
 }

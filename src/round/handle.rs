@@ -52,8 +52,7 @@ pub enum State {
     Runnable,
     /// Task is suspended and will not execute until resumed.
     Suspended,
-    /// Task is waiting for external event to wake it. After waking, this task won't change state
-    /// immediately to `Runnable`.
+    /// Task is waiting for external event to wake it.
     Waiting,
     /// Task is cancelled but was not removed form scheduler yet.
     Cancelled,

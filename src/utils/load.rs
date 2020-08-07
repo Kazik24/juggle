@@ -15,13 +15,19 @@ use crate::utils::{TimerClock, TimingGroup};
 /// into parts for each task. Some task can therefore have assigned more time than the others, e.g if
 /// you have 2 tasks, first with 1 time slot and second with 2, then let them run for 3 seconds, first
 /// task will be running 1 second from this time and second task - 2 seconds.
+///
+/// You can specify custom clock for measuring time in this group by implementing
+/// [TimerClock](trait.TimerClock.html) trait and passing it to [with](#method.with) method.
 pub struct LoadBalance<F: Future,C: TimerClock>{
     index: usize,
     group: Rc<(RefCell<TimingGroup<C::Duration>>,C)>,
     future: F,
 }
 impl<F: Future,C: TimerClock> LoadBalance<F,C>{
-    /// Create new load balancing group with one future in it and given number of time slots assigned to it.
+    /// Create new load balancing group with one future in it. Assigns specific
+    /// number of time slots to future and clock used as measuring time source for this group.
+    /// For usage with `std` library feature, you can use [StdTimerClock](struct.StdTimerClock.html)
+    /// as measuring time source.
     pub fn with(clock: C,prop: u16,future: F)->Self{
         let mut group = TimingGroup::new();
         let key = group.add(prop);

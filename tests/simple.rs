@@ -1,9 +1,6 @@
 use juggle::*;
 use std::time::Duration;
 use rand::Rng;
-use juggle::utils::AtomicCell;
-use std::task::{Waker, Context, Poll};
-use std::future::Future;
 
 
 async fn waiting_task(handle: WheelHandle<'_>){

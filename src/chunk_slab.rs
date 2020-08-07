@@ -78,8 +78,8 @@ impl<I: ChunkSlabKey,T> ChunkSlab<I,T>{
     pub fn remove(&mut self, key: I) -> Option<T> {
         let chunk = self.entries.get_mut(key.into_index() / CHUNK_SIZE)?;
         let sub_idx = key.into_index() % CHUNK_SIZE; //cannot cause IOOB when accessing chunk.data
-
-        match replace(&mut chunk.data[sub_idx], Entry::Empty(self.next)) {
+        let elem = &mut chunk.data[sub_idx];
+        match replace(elem, Entry::Empty(self.next)) {
             Entry::Full(val) => {
                 self.len -= 1;
                 self.next = key;
@@ -87,7 +87,7 @@ impl<I: ChunkSlabKey,T> ChunkSlab<I,T>{
             }
             prev => {
                 // entry is empty, restore state
-                chunk.data[sub_idx] = prev;
+                *elem = prev;
                 None
             }
         }
