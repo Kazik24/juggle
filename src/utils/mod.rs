@@ -93,7 +93,8 @@ impl AtomicWakerRegistry{
 #[cfg(test)]
 mod tests{
     use super::*;
-    use std::sync::atomic::*;
+    use core::sync::atomic::*;
+    use alloc::sync::Arc;
 
     const WAKE: usize = 1;
     const DROP: usize = 2;

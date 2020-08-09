@@ -35,10 +35,7 @@ fn create_clock()->impl TimerClock {
     impl TimerClock for MockClock{
         type Duration = Duration;
         type Instant = Instant;
-        fn start(&self) -> Self::Instant {
-            println!("Start mock timer");
-            Instant::now()
-        }
+        fn start(&self) -> Self::Instant { Instant::now() }
         fn stop(&self, start: Self::Instant) -> Self::Duration { Instant::now() - start }
     }
     #[cfg(feature="std")]
