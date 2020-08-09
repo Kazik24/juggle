@@ -4,7 +4,7 @@
 //!
 
 #![warn(missing_docs)]
-//#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 

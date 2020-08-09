@@ -46,15 +46,25 @@ use core::num::NonZeroU16;
 /// }
 /// ```
 pub trait TimerClock{
+    /// Type that represents time passed between two time points.
     type Duration: TimerCount;
+    /// Custom type used as time point identifier, should represent value obtained from some
+    /// monotonic clock.
     type Instant;
+    /// Get current time value of this clock.
     fn start(&self)->Self::Instant;
+    /// Get time passed between now and some past time point given in argument. `Instant` passed in
+    /// argument is guaranteed to be obtained in some time point before this call, if clock is
+    /// monotonic then condition `current_time_point >= start` can be relied on.
     fn stop(&self,start: Self::Instant)->Self::Duration;
 }
 
-impl TimerCount for Duration{
-    fn div_by(self, by: NonZeroU16) -> Self { self.div(by.get() as u32) }
-    fn mul_by(self, by: NonZeroU16) -> Self { self.mul(by.get() as u32) }
+/// Trait implemented by data types that can be used to measure time in abstract units.
+pub trait TimerCount: Copy + Ord + Add<Output=Self> + Sub<Output=Self> + Default{
+    /// Divide count by specified value that is not zero.
+    fn div_by(self,by: NonZeroU16)->Self;
+    /// Multiply count by specified value that is not zero.
+    fn mul_by(self,by: NonZeroU16)->Self;
 }
 
 macro_rules! impl_count {
@@ -68,12 +78,9 @@ macro_rules! impl_count {
 // implement TimerCount for all integers except u8/i8
 impl_count!(u16,i16,u32,i32,u64,i64,u128,i128,usize,isize);
 
-/// Trait implemented by data types that can be used to measure time in abstract units.
-pub trait TimerCount: Copy + Ord + Add<Output=Self> + Sub<Output=Self> + Default{
-    /// Divide count by specified value that is not zero.
-    fn div_by(self,by: NonZeroU16)->Self;
-    /// Multiply count by specified value that is not zero.
-    fn mul_by(self,by: NonZeroU16)->Self;
+impl TimerCount for Duration{
+    fn div_by(self, by: NonZeroU16) -> Self { self.div(by.get() as u32) }
+    fn mul_by(self, by: NonZeroU16) -> Self { self.mul(by.get() as u32) }
 }
 
 

@@ -1,5 +1,5 @@
 use juggle::*;
-use juggle::utils::{LoadBalance, StdTimerClock};
+use juggle::utils::{LoadBalance, TimerClock};
 use std::time::{Instant, Duration};
 use std::thread::{sleep, spawn};
 use rand::Rng;
@@ -30,13 +30,30 @@ async fn control_task(handle: WheelHandle<'_>,to_cancel: Vec<IdNum>,total: u64){
     to_cancel.iter().for_each(|&id|{ handle.cancel(id); });
 }
 
+fn create_clock()->impl TimerClock {
+    struct MockClock;
+    impl TimerClock for MockClock{
+        type Duration = Duration;
+        type Instant = Instant;
+        fn start(&self) -> Self::Instant {
+            println!("Start mock timer");
+            Instant::now()
+        }
+        fn stop(&self, start: Self::Instant) -> Self::Duration { Instant::now() - start }
+    }
+    #[cfg(feature="std")]
+    return juggle::utils::StdTimerClock;
+    #[cfg(not(feature="std"))]
+    return MockClock;
+}
+
 fn load_balance_tasks(total: u64,presets: &[(u16,fn(usize)->u64)])->Vec<u64>{
     let results = presets.iter().map(|_|Cell::new(Duration::default())).collect::<Vec<_>>();
 
     if let Some((first,rest)) = presets.split_first(){
         let wheel = Wheel::new();
         let handle = wheel.handle();
-        let mut group = LoadBalance::with(StdTimerClock, first.0, load_task(0, presets, &results));
+        let mut group = LoadBalance::with(create_clock(), first.0, load_task(0, presets, &results));
         let mut ids = Vec::new();
         for (index,(prop,_)) in rest.iter().enumerate(){
             let index = index + 1; //cause first is already taken

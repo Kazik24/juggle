@@ -15,7 +15,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Build
+    - name: Build with no_std
+      run: cargo build --no-default-features
+    - name: Build default
       run: cargo build
-    - name: Run tests
+    - name: Run tests with no_std
+      run: cargo test --no-default-features
+    - name: Run tests default
       run: cargo test

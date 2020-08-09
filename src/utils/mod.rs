@@ -14,9 +14,10 @@ mod load;
 mod timing;
 
 pub use cell::AtomicCell;
-#[cfg(feature = "std")]
 pub use load::LoadBalance;
-pub use timing::*;
+pub use timing::{TimerClock, TimerCount, TimingGroup};
+#[cfg(feature = "std")]
+pub use timing::StdTimerClock;
 use core::ptr::null;
 
 
