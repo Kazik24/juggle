@@ -47,6 +47,8 @@ impl<F: Future,C: TimerClock> LoadBalance<F,C>{
             future,
         }
     }
+    /// Returns number of tasks registered in this group.
+    pub fn count(&self)->usize{ self.group.0.borrow().count() }
 }
 impl<F: Future,C: TimerClock> Drop for LoadBalance<F,C>{
     fn drop(&mut self) {

@@ -18,7 +18,7 @@ pub(crate) struct SchedulerAlgorithm<'futures>{
     runnable1: VecDeque<TaskKey>,
     deferred: Vec<TaskKey>,
     last_waker: Arc<AtomicWakerRegistry>,
-    pub registry: ChunkSlab<TaskKey,DynamicFuture<'futures>>,
+    pub(crate) registry: ChunkSlab<TaskKey,DynamicFuture<'futures>>,
     suspended_count: usize,
     current: Option<TaskKey>,
     which_buffer: bool,
@@ -226,7 +226,6 @@ impl<'futures> SchedulerAlgorithm<'futures>{
         write!(f,"}}")
     }
 
-    // TODO: what to do when all tasks are suspended.
     pub(crate) fn poll_internal(&mut self, cx: &mut Context<'_>) -> Poll<bool> {
         loop{
             self.last_waker.clear();//drop previous waker if any

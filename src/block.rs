@@ -1,24 +1,7 @@
 use core::future::Future;
-use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll};
 use core::pin::Pin;
 use crate::utils::noop_waker;
-
-pub(crate) trait Parker{
-    /// Parks this thread is there is no token available, else returns immediately
-    fn park(&self);
-    /// Makes token available.
-    fn unpark(&self);
-}
-
-pub(crate) struct SpinParker(AtomicBool);
-
-impl Parker for SpinParker{
-    fn park(&self) {
-        while !self.0.compare_and_swap(true,false,Ordering::Acquire) {}
-    }
-    fn unpark(&self) { self.0.store(true,Ordering::Release); }
-}
 
 
 /// Utility for busy blocking on future.
