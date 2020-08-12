@@ -16,7 +16,7 @@ mod block;
 
 pub use self::yield_helper::{Yield, YieldTimes, YieldUntil};
 pub use self::round::{Wheel, WheelHandle, LockedWheel, IdNum, SpawnParams, State, SuspendError};
-pub use self::block::spin_block_on;
+pub use self::block::{block_on, spin_block_on};
 
 
 /// Yield current task. Gives the sheduler opportunity to switch to another task.

@@ -18,7 +18,6 @@ pub use load::LoadBalance;
 pub use timing::{TimerClock, TimerCount, TimingGroup};
 #[cfg(feature = "std")]
 pub use timing::StdTimerClock;
-use core::ptr::null;
 
 
 /// Implement this trait if you want to create custom waker with [to_waker](fn.to_waker.html) function.
@@ -42,12 +41,22 @@ pub fn to_waker<T: DynamicWake + Send + Sync + 'static>(ptr: Arc<T>)->Waker{
 ///
 /// Returned waker can be used as dummy waker when polling future. This waker is static so using
 /// `mem::forget` on it won't cause a leak.
-pub fn noop_waker()->Waker{
-    unsafe{ Waker::from_raw(RawWaker::new(null(),&NOOP_WAKER_VTABLE)) }
+pub fn noop_waker()->Waker{ func_waker(||{}) }
+
+/// Returns waker that performs action from specified function pointer when waked.
+///
+/// Returned waker can be supplied to [block_on](../fn.block_on.html) function to perform some
+/// action when waked. This waker is static so using `mem::forget` on it won't cause a leak.
+pub fn func_waker(func_ptr: fn())->Waker{
+    fn wake_func(ptr: *const ()){
+        let func: fn() = unsafe{ mem::transmute(ptr) };
+        func();
+    }
+    fn clone_func(ptr: *const ())->RawWaker{ RawWaker::new(ptr,&FUNC_WAKER_VTABLE) }
+    fn dummy(_: *const ()) {}
+    static FUNC_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(clone_func,wake_func,wake_func,dummy);
+    unsafe{ Waker::from_raw(RawWaker::new(func_ptr as *const (),&FUNC_WAKER_VTABLE)) }
 }
-fn noop_clone(_: *const ()) -> RawWaker{ RawWaker::new(null(),&NOOP_WAKER_VTABLE) }
-fn noop_dummy(_: *const ()) {}
-static NOOP_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone,noop_dummy,noop_dummy,noop_dummy);
 
 struct Helper<T>(T);
 impl<T: DynamicWake + Send + Sync + 'static> Helper<T>{
@@ -145,5 +154,26 @@ mod tests{
         test.store(0,Ordering::SeqCst);
         waker.wake();
         assert_eq!(test.load(Ordering::SeqCst),WAKE | DROP);
+    }
+
+    static WAKE_COUNT: AtomicUsize = AtomicUsize::new(0);
+    fn static_wake_func(){
+        WAKE_COUNT.fetch_add(1,Ordering::Relaxed);
+    }
+    #[test]
+    fn test_func_waker(){
+        WAKE_COUNT.store(0,Ordering::Relaxed);
+        let waker = func_waker(static_wake_func);
+        waker.wake_by_ref();
+        let cloned = waker.clone();
+        assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),1);
+        waker.wake();
+        assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),2);
+        cloned.wake_by_ref();
+        assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),3);
+        cloned.wake();
+        assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),4);
+        WAKE_COUNT.store(0,Ordering::Relaxed);
+        assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),0);
     }
 }
