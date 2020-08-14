@@ -9,7 +9,7 @@ use crate::utils::{TimerClock, TimingGroup};
 /// Helper for equally dividing time slots across multiple tasks.
 ///
 /// This struct can be used as a wrapper for tasks to ensure they have more-less equal amount of time
-/// per slot to execute.
+/// per slot to execute. For more low-level control you can use [TimingGroup](struct.TimingGroup.html).
 ///
 /// Each task has number of time slots assigned to it. Time slots divides time designated for this group
 /// into parts for each task. Some task can therefore have assigned more time than the others, e.g if
@@ -30,17 +30,17 @@ impl<F: Future,C: TimerClock> LoadBalance<F,C>{
     /// as measuring time source.
     pub fn with(clock: C,prop: u16,future: F)->Self{
         let mut group = TimingGroup::new();
-        let key = group.add(prop);
+        let key = group.insert(prop);
         Self{
             index: key,
             group: Rc::new((RefCell::new(group),clock)),
             future
         }
     }
-    /// Add future to this load balancing group with given number of time slots assigned. Returned wrapper
+    /// Insert future to this load balancing group with given number of time slots assigned. Returned wrapper
     /// also belongs to the same group as this wrapper.
-    pub fn add<G>(&mut self,prop: u16,future: G)->LoadBalance<G,C> where G: Future{
-        let index = self.group.0.borrow_mut().add(prop);
+    pub fn insert<G>(&mut self, prop: u16, future: G) ->LoadBalance<G,C> where G: Future{
+        let index = self.group.0.borrow_mut().insert(prop);
         LoadBalance{
             index,
             group: self.group.clone(), //clone rc

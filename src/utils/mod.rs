@@ -1,6 +1,10 @@
 //! Couple of helpful utilities.
 //!
-//! This module contains primitives useful for working with tasks and synchronization.
+//! This module contains primitives useful for:
+//! * Dividing CPU usage between multiple tasks ([LoadBalance](struct.LoadBalance.html)).
+//! * Sharing value between threads without using locks ([AtomicCell](struct.AtomicCell.html)).
+//! * Creating `Waker`s ([to_waker](fn.to_waker.html), [func_waker](fn.func_waker.html),
+//! [noop_waker](fn.noop_waker.html))
 
 
 

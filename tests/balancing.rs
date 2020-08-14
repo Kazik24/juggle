@@ -38,9 +38,9 @@ fn create_clock()->impl TimerClock {
         fn start(&self) -> Self::Instant { Instant::now() }
         fn stop(&self, start: Self::Instant) -> Self::Duration { Instant::now() - start }
     }
-    #[cfg(feature="std")]
+    #[cfg(feature = "std")]
     return juggle::utils::StdTimerClock;
-    #[cfg(not(feature="std"))]
+    #[cfg(not(feature = "std"))]
     return MockClock;
 }
 
@@ -54,7 +54,7 @@ fn load_balance_tasks(total: u64,presets: &[(u16,fn(usize)->u64)])->Vec<u64>{
         let mut ids = Vec::new();
         for (index,(prop,_)) in rest.iter().enumerate(){
             let index = index + 1; //cause first is already taken
-            let id = handle.spawn(SpawnParams::default(),group.add(*prop,load_task(index,presets,&results)));
+            let id = handle.spawn(SpawnParams::default(),group.insert(*prop, load_task(index, presets, &results)));
             ids.push(id.unwrap());
         }
         let last = handle.spawn(SpawnParams::default(),group);

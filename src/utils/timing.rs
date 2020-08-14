@@ -14,11 +14,11 @@ use core::num::NonZeroU16;
 /// ```
 /// use juggle::utils::TimerClock;
 ///
-/// # fn init_timer()->usize{0}
-/// # fn shutdown_timer(_:usize) {}
-/// # fn get_timer_value(_:usize)->u32{0}
+/// # fn init_timer()->u32{0}
+/// # fn shutdown_timer(_:u32) {}
+/// # fn get_timer_value(_:u32)->u32{0}
 /// struct MyTimer{
-///     timer_id: usize,
+///     timer_id: u32,
 /// }
 ///
 /// impl TimerClock for MyTimer {
@@ -83,7 +83,13 @@ impl TimerCount for Duration{
     fn mul_by(self, by: NonZeroU16) -> Self { self.mul(by.get() as u32) }
 }
 
-
+/// Helper for equally dividing time slots across multiple entries manually.
+///
+/// This struct can be used to control time usage of some arbitrary entries and to ensure they have
+/// more-less equal amount of time per slot to assigned. [LoadBalance](struct.LoadBalance.html)
+/// group uses this struct to split time slots between tasks.
+///
+/// You can use custom time units by implementing trait [TimerCount](trait.TimerCount.html).
 pub struct TimingGroup<C: TimerCount>{
     info: ChunkSlab<usize,TimeEntry<C>>,
     max: C,
@@ -105,11 +111,11 @@ impl<C: TimerCount> TimingGroup<C>{
         }
     }
 
-    /// Add entry to timing group with specific number of time slots and obtain its key.
+    /// Insert entry to timing group with specific number of time slots and obtain its key.
     ///
     /// # Panics
     /// Panics if time slot count argument is zero.
-    pub fn add(&mut self,slot_count: u16)->usize{
+    pub fn insert(&mut self, slot_count: u16) ->usize{
         let proportion = NonZeroU16::new(slot_count).expect("Time slot count is zero.");
         self.info.insert(TimeEntry{
             proportion,
