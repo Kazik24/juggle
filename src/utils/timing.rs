@@ -2,7 +2,7 @@ use core::time::Duration;
 use core::ops::{Add, Div, Mul, Sub};
 use crate::chunk_slab::ChunkSlab;
 use core::cmp::max;
-use core::fmt::Debug;
+use core::fmt::{Debug, Formatter};
 use core::num::NonZeroU16;
 
 
@@ -86,7 +86,7 @@ impl TimerCount for Duration{
 /// Helper for equally dividing time slots across multiple entries manually.
 ///
 /// This struct can be used to control time usage of some arbitrary entries and to ensure they have
-/// more-less equal amount of time per slot to assigned. [LoadBalance](struct.LoadBalance.html)
+/// more-less equal amount of time per slot to assign. [LoadBalance](struct.LoadBalance.html)
 /// group uses this struct to split time slots between tasks.
 ///
 /// You can use custom time units by implementing trait [TimerCount](trait.TimerCount.html).
@@ -184,9 +184,27 @@ impl<C: TimerCount> TimingGroup<C>{
             }
         }
     }
-
+    #[inline]
     fn get_proportional(entry: &TimeEntry<C>)->C{
         entry.sum.div_by(entry.proportion)
+    }
+}
+
+impl<C: TimerCount + Debug> Debug for TimingGroup<C>{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        struct DebugEntry<'a,T: Debug>(&'a TimeEntry<T>);
+        impl<'a,T:Debug> Debug for DebugEntry<'a,T>{
+            fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+                f.debug_struct("")
+                    .field("slots",&self.0.proportion.get())
+                    .field("total",&self.0.sum).finish()
+            }
+        }
+        let mut m = f.debug_map();
+        for (key,entry) in self.info.iter(){
+            m.entry(&key,&DebugEntry(entry));
+        }
+        m.finish()
     }
 }
 

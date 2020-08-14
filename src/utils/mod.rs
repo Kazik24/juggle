@@ -1,10 +1,10 @@
 //! Couple of helpful utilities.
 //!
-//! This module contains primitives useful for:
+//! This module contains stuff useful for:
 //! * Dividing CPU usage between multiple tasks ([LoadBalance](struct.LoadBalance.html)).
 //! * Sharing value between threads without using locks ([AtomicCell](struct.AtomicCell.html)).
 //! * Creating `Waker`s ([to_waker](fn.to_waker.html), [func_waker](fn.func_waker.html),
-//! [noop_waker](fn.noop_waker.html))
+//! [noop_waker](fn.noop_waker.html)).
 
 
 
@@ -22,7 +22,6 @@ pub use load::LoadBalance;
 pub use timing::{TimerClock, TimerCount, TimingGroup};
 #[cfg(feature = "std")]
 pub use timing::StdTimerClock;
-
 
 
 /// Implement this trait if you want to create custom waker with [to_waker](fn.to_waker.html) function.
@@ -174,19 +173,21 @@ mod tests{
     #[test]
     fn test_func_waker(){
         static WAKE_COUNT: AtomicUsize = AtomicUsize::new(0);
-        WAKE_COUNT.store(0,Ordering::Relaxed);
+        if WAKE_COUNT.compare_and_swap(0,1,Ordering::Relaxed) != 0 {
+            unreachable!("Test was invoked concurrently!?!?");
+        }
         let waker = func_waker(||{
             WAKE_COUNT.fetch_add(1,Ordering::Relaxed);
         });
         waker.wake_by_ref();
         let cloned = waker.clone();
-        assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),1);
-        waker.wake();
         assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),2);
-        cloned.wake_by_ref();
+        waker.wake();
         assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),3);
-        cloned.wake();
+        cloned.wake_by_ref();
         assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),4);
+        cloned.wake();
+        assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),5);
         WAKE_COUNT.store(0,Ordering::Relaxed);
         assert_eq!(WAKE_COUNT.load(Ordering::Relaxed),0);
     }

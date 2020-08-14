@@ -2,10 +2,12 @@ use core::cell::UnsafeCell;
 use core::mem::{ManuallyDrop, forget};
 use core::sync::atomic::*;
 use core::ops::DerefMut;
+use core::fmt::{Debug, Formatter};
 
 /// Wrapper struct that allows modifying and swapping value without using locks.
 ///
-/// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
+/// AtomicCell does not use atomic load/store/cas on contained data so that it can hold structs
+/// of arbitrary size.
 pub struct AtomicCell<T>{
     mark: AtomicBool,
     cell: UnsafeCell<ManuallyDrop<T>>,
@@ -28,9 +30,9 @@ impl<T> AtomicCell<T>{
     /// When successful returns `Ok` with previous value. In case of failure, returns `Err` with
     /// argument passed to it, returning ownership of value.
     ///
-    /// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
-    /// This method might fail in case some other thread is now modifying this value. In case of failure
-    /// you can perform additional checks or try to swap value again until success.
+    /// AtomicCell does not use atomic load/store/cas on contained data so that it can hold structs
+    /// of arbitrary size. This method might fail in case some other thread is now modifying this value.
+    /// In case of failure you can perform additional checks or try to swap value again until success.
     pub fn try_swap(&self,value: T)->Result<T,T>{
         if self.mark.compare_and_swap(false,true,Ordering::Acquire) { //other thread interfered
             Err(value)
@@ -50,8 +52,8 @@ impl<T> AtomicCell<T>{
     ///
     /// Returns previous value from cell.
     ///
-    /// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
-    /// This method tries to swap value in busy loop until success.
+    /// AtomicCell does not use atomic load/store/cas on contained data so that it can hold structs
+    /// of arbitrary size. This method tries to swap value in busy loop until success.
     pub fn swap(&self,mut value: T)->T{
         loop{
             match self.try_swap(value) {
@@ -73,9 +75,9 @@ impl<T> AtomicCell<T>{
     /// `T` is required to be copy in case if given function panics. When this occurs, the value is
     /// restored to state from before applying the function and panic is propagated.
     ///
-    /// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
-    /// This method might fail in case some other thread is now modifying this value. In case of failure
-    /// you can perform additional checks or try to apply action again until success.
+    /// AtomicCell does not use atomic load/store/cas on contained data so that it can hold structs
+    /// of arbitrary size. This method might fail in case some other thread is now modifying this value.
+    /// In case of failure you can perform additional checks or try to apply action again until success.
     pub fn try_apply<F,R>(&self,func: F)->Result<R,F> where F: FnOnce(&mut T)->R, T: Copy{
         if self.mark.compare_and_swap(false,true,Ordering::Acquire) { //other thread interfered
             Err(func)
@@ -106,8 +108,8 @@ impl<T> AtomicCell<T>{
     /// `T` is required to be copy in case if given function panics. When this occurs, the value is
     /// restored to state from before applying the function and panic is propagated.
     ///
-    /// AtomicCell does not use atomic load/store/cas so that it can contain structs of arbitrary size.
-    /// This method tries to apply function in busy loop until success.
+    /// AtomicCell does not use atomic load/store/cas on contained data so that it can hold structs
+    /// of arbitrary size. This method tries to apply function in busy loop until success.
     pub fn apply<F,R>(&self,mut func: F)->R where F: FnOnce(&mut T)->R, T: Copy{
         loop{
             match self.try_apply(func) {
@@ -142,6 +144,13 @@ impl<T> Drop for AtomicCell<T>{
         unsafe{
             ManuallyDrop::drop(&mut *self.cell.get());
         }
+    }
+}
+
+impl<T: Debug> Debug for AtomicCell<T>{ //Debug bound just in case we will support showing content.
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f,"AtomicCell<{}>",core::any::type_name::<T>())?;
+        f.debug_struct("").field("holds_lock",&self.mark.load(Ordering::Relaxed)).finish()
     }
 }
 
