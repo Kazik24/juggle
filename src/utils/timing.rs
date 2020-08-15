@@ -110,7 +110,14 @@ impl<C: TimerCount> TimingGroup<C>{
             max: C::default(),
         }
     }
-
+    /// Create new empty instance of `TimingGroup` that can contain at least `capacity` number of
+    /// entries without reallocating.
+    pub fn with_capacity(capacity: usize)->Self{
+        Self{
+            info: ChunkSlab::with_capacity(capacity),
+            max: C::default(),
+        }
+    }
     /// Insert entry to timing group with specific number of time slots and obtain its key.
     ///
     /// # Panics

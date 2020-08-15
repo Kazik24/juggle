@@ -1,11 +1,13 @@
 use core::future::Future;
 use core::task::{Poll, Context};
 use core::pin::Pin;
+use pin_project::pin_project;
 
 /// Helper struct for task dealing with task switching.
 #[derive(Clone,Debug,Hash,Eq,PartialEq)]
 pub struct Yield(bool);
 #[doc(hidden)]
+#[pin_project]
 #[derive(Clone,Debug,Hash,Eq,PartialEq)]
 pub struct YieldUntil<F: FnMut()->bool>(F);
 #[doc(hidden)]
@@ -69,7 +71,7 @@ impl Future for Yield{
 impl<F: FnMut()->bool> Future for YieldUntil<F>{
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if unsafe{self.get_unchecked_mut().0()} {Poll::Ready(())}
+        if self.project().0() {Poll::Ready(())}
         else{
             cx.waker().wake_by_ref();
             Poll::Pending
