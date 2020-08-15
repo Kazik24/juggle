@@ -1,15 +1,15 @@
 use core::future::Future;
-use core::task::{Context, Poll, Waker};
 use core::pin::Pin;
-use crate::utils::noop_waker;
 use core::sync::atomic::spin_loop_hint;
-
+use core::task::{Context, Poll, Waker};
+use crate::utils::noop_waker;
 
 /// Utility for busy blocking on future.
 ///
 /// Usefull for creating main loop on embedded systems. This function simply polls given future until it is ready.
 /// Waker used in polling is no-op, when future yields then it is polled again (with `spin_loop_hint` optimization).
-/// Equivalent to `block_on(future,||spin_loop_hint(),&noop_waker())`.
+///
+/// Equivalent to `block_on(future, || spin_loop_hint(), &noop_waker())`.
 /// # Examples
 /// ```
 /// use juggle::*;
@@ -42,8 +42,8 @@ use core::sync::atomic::spin_loop_hint;
 ///
 /// spin_block_on(wheel).unwrap();
 /// ```
-pub fn spin_block_on<F>(future: F)->F::Output where F:Future{
-    block_on(future,||spin_loop_hint(),&noop_waker())
+pub fn spin_block_on<F>(future: F) -> F::Output where F: Future {
+    block_on(future, || spin_loop_hint(), &noop_waker())
 }
 
 /// Utility for blocking on future with custom waker and pending action.
@@ -63,10 +63,10 @@ pub fn spin_block_on<F>(future: F)->F::Output where F:Future{
 /// assert_eq!(result,20);
 /// assert_eq!(yield_count,10);
 /// ```
-pub fn block_on<F>(mut future: F,mut on_pending: impl FnMut(),waker: &Waker)->F::Output where F: Future{
-    let mut future = unsafe{ Pin::new_unchecked(&mut future) };
+pub fn block_on<F>(mut future: F, mut on_pending: impl FnMut(), waker: &Waker) -> F::Output where F: Future {
+    let mut future = unsafe { Pin::new_unchecked(&mut future) };
     let mut ctx = Context::from_waker(waker);
-    loop{
+    loop {
         match future.as_mut().poll(&mut ctx) {
             Poll::Ready(value) => break value,
             Poll::Pending => { on_pending(); }

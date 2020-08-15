@@ -1,10 +1,9 @@
-use core::time::Duration;
-use core::ops::{Add, Div, Mul, Sub};
-use crate::chunk_slab::ChunkSlab;
 use core::cmp::max;
 use core::fmt::{Debug, Formatter};
 use core::num::NonZeroU16;
-
+use core::ops::{Add, Div, Mul, Sub};
+use core::time::Duration;
+use crate::chunk_slab::ChunkSlab;
 
 /// Custom time source. Implement this trait if you want to provide your own time source for
 /// [LoadBalance](struct.LoadBalance.html) group.
@@ -45,26 +44,26 @@ use core::num::NonZeroU16;
 ///     }
 /// }
 /// ```
-pub trait TimerClock{
+pub trait TimerClock {
     /// Type that represents time passed between two time points.
     type Duration: TimerCount;
     /// Custom type used as time point identifier, should represent value obtained from some
     /// monotonic clock.
     type Instant;
     /// Get current time value of this clock.
-    fn start(&self)->Self::Instant;
+    fn start(&self) -> Self::Instant;
     /// Get time passed between now and some past time point given in argument. `Instant` passed in
     /// argument is guaranteed to be obtained in some time point before this call, if clock is
     /// monotonic then condition `current_time_point >= start` can be relied on.
-    fn stop(&self,start: Self::Instant)->Self::Duration;
+    fn stop(&self, start: Self::Instant) -> Self::Duration;
 }
 
 /// Trait implemented by data types that can be used to measure time in abstract units.
-pub trait TimerCount: Copy + Ord + Add<Output=Self> + Sub<Output=Self> + Default{
+pub trait TimerCount: Copy + Ord + Add<Output=Self> + Sub<Output=Self> + Default {
     /// Divide count by specified value that is not zero.
-    fn div_by(self,by: NonZeroU16)->Self;
+    fn div_by(self, by: NonZeroU16) -> Self;
     /// Multiply count by specified value that is not zero.
-    fn mul_by(self,by: NonZeroU16)->Self;
+    fn mul_by(self, by: NonZeroU16) -> Self;
 }
 
 macro_rules! impl_count {
@@ -78,7 +77,7 @@ macro_rules! impl_count {
 // implement TimerCount for all integers except u8/i8
 impl_count!(u16,i16,u32,i32,u64,i64,u128,i128,usize,isize);
 
-impl TimerCount for Duration{
+impl TimerCount for Duration {
     fn div_by(self, by: NonZeroU16) -> Self { self.div(by.get() as u32) }
     fn mul_by(self, by: NonZeroU16) -> Self { self.mul(by.get() as u32) }
 }
@@ -90,30 +89,30 @@ impl TimerCount for Duration{
 /// group uses this struct to split time slots between tasks.
 ///
 /// You can use custom time units by implementing trait [TimerCount](trait.TimerCount.html).
-pub struct TimingGroup<C: TimerCount>{
-    info: ChunkSlab<usize,TimeEntry<C>>,
+pub struct TimingGroup<C: TimerCount> {
+    info: ChunkSlab<usize, TimeEntry<C>>,
     max: C,
 }
-#[derive(Debug,Copy,Clone)]
-struct TimeEntry<D>{
+
+#[derive(Debug, Copy, Clone)]
+struct TimeEntry<D> {
     sum: D,
     proportion: NonZeroU16,
     //above_threshold: bool,
 }
 
-impl<C: TimerCount> TimingGroup<C>{
-
+impl<C: TimerCount> TimingGroup<C> {
     /// Create new empty instance of `TimingGroup`.
-    pub fn new()->Self{
-        Self{
+    pub fn new() -> Self {
+        Self {
             info: ChunkSlab::new(),
             max: C::default(),
         }
     }
     /// Create new empty instance of `TimingGroup` that can contain at least `capacity` number of
     /// entries without reallocating.
-    pub fn with_capacity(capacity: usize)->Self{
-        Self{
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
             info: ChunkSlab::with_capacity(capacity),
             max: C::default(),
         }
@@ -122,9 +121,9 @@ impl<C: TimerCount> TimingGroup<C>{
     ///
     /// # Panics
     /// Panics if time slot count argument is zero.
-    pub fn insert(&mut self, slot_count: u16) ->usize{
+    pub fn insert(&mut self, slot_count: u16) -> usize {
         let proportion = NonZeroU16::new(slot_count).expect("Time slot count is zero.");
-        self.info.insert(TimeEntry{
+        self.info.insert(TimeEntry {
             proportion,
             sum: C::default(),
             //above_threshold: false,
@@ -134,19 +133,19 @@ impl<C: TimerCount> TimingGroup<C>{
     ///
     /// # Panics
     /// Panics if provided key has no associated entry.
-    pub fn remove(&mut self,key: usize){
+    pub fn remove(&mut self, key: usize) {
         self.info.remove(key).expect("Error: unknown key passed to TimingGroup::remove");
     }
     /// Checks if specific key has an entry associated to it in this group.
-    pub fn contains(&self,key: usize)->bool{
+    pub fn contains(&self, key: usize) -> bool {
         self.info.get(key).is_some()
     }
     /// Returns number of registered entries in this group.
-    pub fn count(&self)->usize{ self.info.len() }
+    pub fn count(&self) -> usize { self.info.len() }
     /// Returns time slot count for given key or None if this key is invalid.
-    pub fn get_slot_count(&self,key: usize)->Option<u16>{ self.info.get(key).map(|v|v.proportion.get()) }
+    pub fn get_slot_count(&self, key: usize) -> Option<u16> { self.info.get(key).map(|v| v.proportion.get()) }
     /// Remove all entries from this group and reset its state.
-    pub fn clear(&mut self){
+    pub fn clear(&mut self) {
         self.info.clear();
         self.max = C::default();
     }
@@ -155,19 +154,19 @@ impl<C: TimerCount> TimingGroup<C>{
     ///
     /// # Panics
     /// Panics if provided key has no associated entry.
-    pub fn can_execute(&self,key: usize)->bool{
+    pub fn can_execute(&self, key: usize) -> bool {
         let this = *self.info.get(key).expect("Error: unknown key passed to TimingGroup::can_execute");
         let this_dur = Self::get_proportional(&this);
         if this_dur == self.max {
             //check if there is any task with lower time used
-            if self.info.iter().any(|(_,v)|Self::get_proportional(v) != this_dur) {
+            if self.info.iter().any(|(_, v)| Self::get_proportional(v) != this_dur) {
                 return false;
             }
         }
         // multiply max by 0.9
         let min_bound = self.max.mul_by(NonZeroU16::new(9).unwrap()).div_by(NonZeroU16::new(10).unwrap());
         //there is at least one element in slab
-        let min_time = self.info.iter().map(|(_,v)|Self::get_proportional(v)).min().unwrap();
+        let min_time = self.info.iter().map(|(_, v)| Self::get_proportional(v)).min().unwrap();
         if min_time <= min_bound { //should execute tasks that are starved
             return this_dur <= min_bound; //execute ony if below bound
         }
@@ -179,37 +178,37 @@ impl<C: TimerCount> TimingGroup<C>{
     ///
     /// # Panics
     /// Panics if provided key has no associated entry.
-    pub fn update_duration(&mut self,key: usize,dur: C){
+    pub fn update_duration(&mut self, key: usize, dur: C) {
         let this = self.info.get_mut(key).expect("Error: unknown key passed to TimingGroup::update_duration");
         this.sum = this.sum + dur;
-        self.max = max(self.max,Self::get_proportional(this));
-        let min_time = self.info.iter().map(|(_,v)|Self::get_proportional(v)).min().unwrap();
-        if min_time != C::default() && false{
+        self.max = max(self.max, Self::get_proportional(this));
+        let min_time = self.info.iter().map(|(_, v)| Self::get_proportional(v)).min().unwrap();
+        if min_time != C::default() && false {
             self.max = self.max - min_time;
-            for (_,entry) in self.info.iter_mut() { //offset all by disproportion
+            for (_, entry) in self.info.iter_mut() { //offset all by disproportion
                 entry.sum = entry.sum - min_time.mul_by(entry.proportion);
             }
         }
     }
     #[inline]
-    fn get_proportional(entry: &TimeEntry<C>)->C{
+    fn get_proportional(entry: &TimeEntry<C>) -> C {
         entry.sum.div_by(entry.proportion)
     }
 }
 
-impl<C: TimerCount + Debug> Debug for TimingGroup<C>{
+impl<C: TimerCount + Debug> Debug for TimingGroup<C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        struct DebugEntry<'a,T: Debug>(&'a TimeEntry<T>);
-        impl<'a,T:Debug> Debug for DebugEntry<'a,T>{
+        struct DebugEntry<'a, T: Debug>(&'a TimeEntry<T>);
+        impl<'a, T: Debug> Debug for DebugEntry<'a, T> {
             fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
                 f.debug_struct("")
-                    .field("slots",&self.0.proportion.get())
-                    .field("total",&self.0.sum).finish()
+                    .field("slots", &self.0.proportion.get())
+                    .field("total", &self.0.sum).finish()
             }
         }
         let mut m = f.debug_map();
-        for (key,entry) in self.info.iter(){
-            m.entry(&key,&DebugEntry(entry));
+        for (key, entry) in self.info.iter() {
+            m.entry(&key, &DebugEntry(entry));
         }
         m.finish()
     }
@@ -219,14 +218,15 @@ impl<C: TimerCount + Debug> Debug for TimingGroup<C>{
 ///
 /// Feature `std` is required to use this struct.
 #[cfg(feature = "std")]
-#[derive(Default,Clone,Eq,PartialEq,Hash,Debug)]
+#[derive(Default, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct StdTimerClock;
+
 #[cfg(feature = "std")]
 impl TimerClock for StdTimerClock {
     type Duration = Duration;
     type Instant = std::time::Instant;
     #[inline]
-    fn start(&self)->Self::Instant{ Self::Instant::now() }
+    fn start(&self) -> Self::Instant { Self::Instant::now() }
     #[inline]
-    fn stop(&self,start: Self::Instant)->Self::Duration{ Self::Instant::now() - start }
+    fn stop(&self, start: Self::Instant) -> Self::Duration { Self::Instant::now() - start }
 }

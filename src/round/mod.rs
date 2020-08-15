@@ -1,10 +1,7 @@
-
-
-
 mod dyn_future;
 mod algorithm;
 mod wheel;
 mod handle;
 
-pub use self::wheel::{Wheel, LockedWheel, SuspendError};
-pub use self::handle::{WheelHandle, IdNum, SpawnParams, State};
+pub use self::handle::{IdNum, SpawnParams, State, WheelHandle};
+pub use self::wheel::{LockedWheel, SuspendError, Wheel};

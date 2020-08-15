@@ -1,16 +1,16 @@
-use alloc::rc::{Weak, Rc};
 use alloc::boxed::Box;
+use alloc::rc::{Rc, Weak};
 use alloc::string::{String, ToString};
 use core::cell::UnsafeCell;
-use crate::round::algorithm::SchedulerAlgorithm;
+use core::fmt::{Debug, Formatter};
 use core::future::Future;
 use core::pin::Pin;
+use crate::round::algorithm::SchedulerAlgorithm;
 use crate::round::dyn_future::{DynamicFuture, TaskName};
-use core::fmt::{Debug, Formatter};
 
 /// Handle used to spawn and control tasks in assigned [Wheel](struct.Wheel.html).
 #[derive(Clone)]
-pub struct WheelHandle<'futures>{
+pub struct WheelHandle<'futures> {
     ptr: Weak<UnsafeCell<SchedulerAlgorithm<'futures>>>,
 }
 
@@ -18,34 +18,35 @@ pub struct WheelHandle<'futures>{
 ///
 /// Identifiers are only valid when distinguishing tasks registered inside the same
 /// [Wheel](struct.Wheel.html). Two different wheels can have tasks with the same identifiers.
-#[derive(Copy,Clone,Eq,PartialEq,Ord,PartialOrd,Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct IdNum(core::num::NonZeroUsize);
 
-impl IdNum{
-    fn from_usize(v: usize)->Self{
-        Self(unsafe{ core::num::NonZeroUsize::new_unchecked(v + 1) })
+impl IdNum {
+    fn from_usize(v: usize) -> Self {
+        Self(unsafe { core::num::NonZeroUsize::new_unchecked(v + 1) })
     }
-    fn to_usize(self)->usize{
+    fn to_usize(self) -> usize {
         self.0.get() - 1
     }
 }
+
 impl Debug for IdNum {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f,"IdNum[0x{:X}]",self.to_usize())
+        write!(f, "IdNum[0x{:X}]", self.to_usize())
     }
 }
 
 /// Parameters used when spawning task inside scheduler.
 ///
 /// Default parameters will spawn runnable unnamed task.
-#[derive(Clone,Eq,PartialEq,Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct SpawnParams {
     suspended: bool,
     name: TaskName,
 }
 
 /// Represents state of a task.
-#[derive(Copy,Clone,Eq,PartialEq,Ord,PartialOrd,Hash,Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 #[repr(u8)]
 pub enum State {
     /// Task is currently executing or waiting for its turn to execute.
@@ -61,7 +62,7 @@ pub enum State {
     Unknown,
 }
 
-macro_rules! unwrap_weak{
+macro_rules! unwrap_weak {
     ($s:expr,$this:ident,$ret:expr) => {
         let rc = match $s.ptr.upgrade() {
             Some(v) => v,
@@ -71,8 +72,8 @@ macro_rules! unwrap_weak{
     }
 }
 
-impl<'futures> WheelHandle<'futures>{
-    pub(crate) fn new(ptr: Weak<UnsafeCell<SchedulerAlgorithm<'futures>>>)->Self{ Self{ptr} }
+impl<'futures> WheelHandle<'futures> {
+    pub(crate) fn new(ptr: Weak<UnsafeCell<SchedulerAlgorithm<'futures>>>) -> Self { Self { ptr } }
 
 
     /// Checks if this handle is valid.
@@ -92,7 +93,7 @@ impl<'futures> WheelHandle<'futures>{
     /// drop(wheel);
     /// assert!(!handle.is_valid()); // Handle can no longer be used to control Wheel.
     /// ```
-    pub fn is_valid(&self)->bool{ self.ptr.strong_count() != 0 }
+    pub fn is_valid(&self) -> bool { self.ptr.strong_count() != 0 }
 
     /// Checks if this and the other handle reference the same [Wheel](struct.Wheel.html).
     ///
@@ -110,9 +111,9 @@ impl<'futures> WheelHandle<'futures>{
     /// assert!(h1.is_same(&h2));
     /// assert!(!h1.is_same(&other));
     /// ```
-    pub fn is_same(&self,other: &WheelHandle<'_>)->bool{
-        match (self.ptr.upgrade(),other.ptr.upgrade()) {
-            (Some(rc1),Some(rc2)) => {
+    pub fn is_same(&self, other: &WheelHandle<'_>) -> bool {
+        match (self.ptr.upgrade(), other.ptr.upgrade()) {
+            (Some(rc1), Some(rc2)) => {
                 let ptr1 = rc1.get() as *mut ();
                 let ptr2 = rc2.get() as *mut ();
                 ptr1 == ptr2
@@ -130,8 +131,8 @@ impl<'futures> WheelHandle<'futures>{
     /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
     /// parameters of this task. Returns identifier of newly allocated task or None if this
     /// handle is invalid.
-    pub fn spawn<F>(&self, params: impl Into<SpawnParams>, future: F) ->Option<IdNum> where F: Future<Output=()> + 'futures{
-        self.spawn_dyn(params,Box::pin(future))
+    pub fn spawn<F>(&self, params: impl Into<SpawnParams>, future: F) -> Option<IdNum> where F: Future<Output=()> + 'futures {
+        self.spawn_dyn(params, Box::pin(future))
     }
 
     /// Create new task from boxed future and obtain its id.
@@ -143,10 +144,10 @@ impl<'futures> WheelHandle<'futures>{
     /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
     /// parameters of this task. Returns identifier of newly allocated task or None if this
     /// handle is invalid.
-    pub fn spawn_dyn(&self, params: impl Into<SpawnParams>, future: Pin<Box<dyn Future<Output=()> + 'futures>>) ->Option<IdNum>{
+    pub fn spawn_dyn(&self, params: impl Into<SpawnParams>, future: Pin<Box<dyn Future<Output=()> + 'futures>>) -> Option<IdNum> {
         unwrap_weak!(self,this,None);
         let params = params.into();
-        let mut dynamic = DynamicFuture::new_allocated(future,this.clone_registry(),params.suspended);
+        let mut dynamic = DynamicFuture::new_allocated(future, this.clone_registry(), params.suspended);
         dynamic.set_name(params.name);
         Some(IdNum::from_usize(this.register(dynamic) as usize))
     }
@@ -157,21 +158,21 @@ impl<'futures> WheelHandle<'futures>{
     /// getting [state](#method.get_state) of this cancelled task it might be `Cancelled` for some time
     /// but eventually it will become `Unknown` because scheduler removes tasks only after circling
     /// through all runnable tasks. Then when new task is spawned it might be assigned to the same id.
-    pub fn cancel(&self, id: IdNum) ->bool{
+    pub fn cancel(&self, id: IdNum) -> bool {
         unwrap_weak!(self,this,false);
         this.cancel(id.to_usize())
     }
     /// Suspend task with given id.
     ///
     /// Suspended tasks cannot execute until resumed.
-    pub fn suspend(&self, id: IdNum) ->bool{
+    pub fn suspend(&self, id: IdNum) -> bool {
         unwrap_weak!(self,this,false);
         this.suspend(id.to_usize())
     }
     /// Resume task with given id.
     ///
     /// Makes this task `Runnable` again.
-    pub fn resume(&self, id: IdNum) ->bool{
+    pub fn resume(&self, id: IdNum) -> bool {
         unwrap_weak!(self,this,false);
         this.resume(id.to_usize())
     }
@@ -201,7 +202,7 @@ impl<'futures> WheelHandle<'futures>{
     /// Returns None when:
     /// * Not called inside task.
     /// * Handle is [`invalid`](#method.is_valid).
-    pub fn current(&self) ->Option<IdNum>{
+    pub fn current(&self) -> Option<IdNum> {
         unwrap_weak!(self,this,None);
         this.get_current().map(|t| IdNum::from_usize(t))
     }
@@ -210,9 +211,9 @@ impl<'futures> WheelHandle<'futures>{
     ///
     /// Function argument is a name of task with specified id or None if task has no name, given
     /// id has no assigned task or this handle is invalid. Returns result of function call.
-    pub fn with_name<F,T>(&self, id: IdNum, func: F) ->T where F: FnOnce(Option<&str>)->T{
+    pub fn with_name<F, T>(&self, id: IdNum, func: F) -> T where F: FnOnce(Option<&str>) -> T {
         unwrap_weak!(self,this,func(None));
-        let arg = this.get_dynamic(id.to_usize()).map(|v|v.get_name_str()).flatten();
+        let arg = this.get_dynamic(id.to_usize()).map(|v| v.get_name_str()).flatten();
         func(arg)
     }
     /// Returns name of current task as new String.
@@ -223,8 +224,8 @@ impl<'futures> WheelHandle<'futures>{
     ///
     /// Note that this method allocates new string. If you don't want to allocate temporary memory
     /// for string use [`with_name`](#method.with_name).
-    pub fn get_current_name(&self)->Option<String>{
-        self.current().map(|id|self.get_name(id)).flatten()
+    pub fn get_current_name(&self) -> Option<String> {
+        self.current().map(|id| self.get_name(id)).flatten()
     }
     /// Returns name of task with specific id as new String.
     /// Returns None when:
@@ -234,70 +235,72 @@ impl<'futures> WheelHandle<'futures>{
     ///
     /// Note that this method allocates new string. If you don't want to allocate temporary memory
     /// for string use [`with_name`](#method.with_name).
-    pub fn get_name(&self,id: IdNum)->Option<String>{
-        self.with_name(id,|s|s.map(|s|s.to_string()))
+    pub fn get_name(&self, id: IdNum) -> Option<String> {
+        self.with_name(id, |s| s.map(|s| s.to_string()))
     }
     /// Find task id that has name equal to given argument.
     ///
     /// Returns None when:
     /// * Task was not found.
     /// * Handle is [`invalid`](#method.is_valid).
-    pub fn get_by_name(&self,name: &str)->Option<IdNum>{
+    pub fn get_by_name(&self, name: &str) -> Option<IdNum> {
         unwrap_weak!(self,this,None);
-        this.get_by_name(name).map(|k|IdNum::from_usize(k))
+        this.get_by_name(name).map(|k| IdNum::from_usize(k))
     }
 
-    fn unchecked_mut<'a>(rc: &'a Rc<UnsafeCell<SchedulerAlgorithm<'futures>>>)->&'a mut SchedulerAlgorithm<'futures>{
-        unsafe{ &mut *rc.get() }
+    fn unchecked_mut<'a>(rc: &'a Rc<UnsafeCell<SchedulerAlgorithm<'futures>>>) -> &'a mut SchedulerAlgorithm<'futures> {
+        unsafe { &mut *rc.get() }
     }
 
-    fn fmt_name(&self, f: &mut Formatter<'_>,name: &str) -> core::fmt::Result {
+    fn fmt_name(&self, f: &mut Formatter<'_>, name: &str) -> core::fmt::Result {
         unwrap_weak!(self,this,write!(f,"{}{{ Invalid }}",name));
-        this.format_internal(f,name)
+        this.format_internal(f, name)
     }
 }
 
-impl<'futures> Debug for WheelHandle<'futures>{
+impl<'futures> Debug for WheelHandle<'futures> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        self.fmt_name(f,"WheelHandle")
+        self.fmt_name(f, "WheelHandle")
     }
 }
 
 impl SpawnParams {
     /// Set suspended property.
-    pub fn suspend(mut self,value: bool)->Self{
+    pub fn suspend(mut self, value: bool) -> Self {
         self.suspended = value;
         self
     }
     /// Set name property to static string slice.
-    pub fn name(mut self,name: &'static str)->Self{
+    pub fn name(mut self, name: &'static str) -> Self {
         self.name = TaskName::Static(name);
         self
     }
     /// Set name property to dynamically allocated string.
-    pub fn dyn_name(mut self,name: impl Into<String>)->Self{
+    pub fn dyn_name(mut self, name: impl Into<String>) -> Self {
         self.name = TaskName::Dynamic(name.into().into_boxed_str());
         self
     }
     /// Create default parameters (suspended property set to false) with name property set to
     /// static string slice.
-    pub fn named(name: &'static str)->Self{Self::default().name(name)}
+    pub fn named(name: &'static str) -> Self { Self::default().name(name) }
     /// Create default parameters (suspended property set to false) with name property set to
     /// dynamically allocated string.
-    pub fn dyn_named(name: impl Into<String>)->Self{Self::default().dyn_name(name)}
+    pub fn dyn_named(name: impl Into<String>) -> Self { Self::default().dyn_name(name) }
     /// Create default parameters (name property set to none) with suspended property set to given
     /// value.
-    pub fn suspended(value: bool)->Self{Self::default().suspend(value)}
+    pub fn suspended(value: bool) -> Self { Self::default().suspend(value) }
 }
+
 impl Default for SpawnParams {
     /// Create default parameters that will spawn runnable unnamed task.
     fn default() -> Self {
-        Self{
+        Self {
             suspended: false,
             name: TaskName::None,
         }
     }
 }
+
 impl Debug for SpawnParams {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let s: Option<&str> = match &self.name {
@@ -306,22 +309,24 @@ impl Debug for SpawnParams {
             TaskName::Static(s) => Some(s),
         };
         if let Some(s) = s {
-            write!(f,"SpawnParams[name: \"{}\", suspended: {}]",s,self.suspended)
-        }else{
-            write!(f,"SpawnParams[suspended: {}]",self.suspended)
+            write!(f, "SpawnParams[name: \"{}\", suspended: {}]", s, self.suspended)
+        } else {
+            write!(f, "SpawnParams[suspended: {}]", self.suspended)
         }
     }
 }
 
-impl From<&'static str> for SpawnParams{
+impl From<&'static str> for SpawnParams {
     /// Works as [named](struct.SpawnParams.html#method.named) method.
-    fn from(v: &'static str) -> Self {SpawnParams::named(v)}
+    fn from(v: &'static str) -> Self { SpawnParams::named(v) }
 }
+
 impl From<String> for SpawnParams {
     /// Works as [dyn_named](struct.SpawnParams.html#method.dyn_named) method.
-    fn from(v: String) -> Self {SpawnParams::dyn_named(v)}
+    fn from(v: String) -> Self { SpawnParams::dyn_named(v) }
 }
-impl From<bool> for SpawnParams{
+
+impl From<bool> for SpawnParams {
     /// Works as [suspended](struct.SpawnParams.html#method.suspended) method.
-    fn from(v: bool) -> Self {SpawnParams::suspended(v)}
+    fn from(v: bool) -> Self { SpawnParams::suspended(v) }
 }

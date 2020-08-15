@@ -1,4 +1,3 @@
-
 //! This crate provides a way to switch between tasks on single-thread environments without using
 //! preemption.
 //!
@@ -15,9 +14,10 @@ mod chunk_slab;
 mod yield_helper;
 mod block;
 
-pub use self::yield_helper::{Yield, YieldTimes, YieldUntil};
-pub use self::round::{Wheel, WheelHandle, LockedWheel, IdNum, SpawnParams, State, SuspendError};
 pub use self::block::{block_on, spin_block_on};
+pub use self::round::{IdNum, LockedWheel, SpawnParams, State, SuspendError, Wheel, WheelHandle};
+pub use self::yield_helper::{Yield, YieldTimes, YieldUntil};
+
 
 
 /// Yield current task. Gives the sheduler opportunity to switch to another task.
@@ -39,7 +39,7 @@ pub use self::block::{block_on, spin_block_on};
 /// # fn main(){ smol::run(some_task()); }
 /// ```
 #[macro_export]
-macro_rules! yield_once{
+macro_rules! yield_once {
     () => {
         $crate::Yield::once().await
     }
@@ -68,7 +68,7 @@ macro_rules! yield_once{
 /// # fn main(){ smol::run(timer_task()); }
 /// ```
 #[macro_export]
-macro_rules! yield_until{
+macro_rules! yield_until {
     ($test_expr:expr) => {
         $crate::Yield::until(||{
             let ret: bool = $test_expr;
