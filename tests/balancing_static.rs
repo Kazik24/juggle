@@ -27,7 +27,7 @@ async fn load_task(index: usize, presets: &[(u16, Box<dyn Fn(usize) -> u64>)], r
 }
 
 async fn control_task(handle: WheelHandle<'_>, to_cancel: Vec<IdNum>, clock: Rc<Cell<u64>>, total: u64) {
-    Yield::until(|| clock.get() >= total).await;
+    Yield::yield_while(|| clock.get() < total).await;
     to_cancel.into_iter().for_each(|id| { handle.cancel(id); });
 }
 

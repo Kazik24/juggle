@@ -26,7 +26,7 @@ async fn load_task(index: usize, presets: &[(u16, fn(usize) -> u64)], results: &
 
 async fn control_task(handle: WheelHandle<'_>, to_cancel: Vec<IdNum>, total: u64) {
     let start = Instant::now();
-    yield_until!(Instant::now() - start >= Duration::from_millis(total));
+    yield_while!(Instant::now() - start < Duration::from_millis(total));
     to_cancel.iter().for_each(|&id| { handle.cancel(id); });
 }
 

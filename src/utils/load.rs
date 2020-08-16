@@ -5,6 +5,7 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use crate::utils::{TimerClock, TimingGroup};
+use pin_project::*;
 
 /// Helper for equally dividing time slots across multiple tasks.
 ///
@@ -18,8 +19,10 @@ use crate::utils::{TimerClock, TimingGroup};
 ///
 /// You can specify custom clock for measuring time in this group by implementing
 /// [TimerClock](trait.TimerClock.html) trait and passing it to [with](#method.with) method.
+#[pin_project]
 pub struct LoadBalance<F: Future, C: TimerClock> {
     record: Registered<C>,
+    #[pin]
     future: F,
 }
 
@@ -87,20 +90,17 @@ impl<F: Future, C: TimerClock> LoadBalance<F, C> {
 
 impl<F: Future, C: TimerClock> Future for LoadBalance<F, C> {
     type Output = F::Output;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
-        if !self.record.group.0.borrow().can_execute(self.record.index) {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+        let this = self.project();
+        if !this.record.group.0.borrow().can_execute(this.record.index) {
             cx.waker().wake_by_ref();
             return Poll::Pending;
         }
 
-        let start = self.record.group.1.start(); //start measure
-        let res = unsafe {
-            let pin = Pin::new_unchecked(&mut self.as_mut().get_unchecked_mut().future);
-            pin.poll(cx)
-        };
-        let dur = self.record.group.1.stop(start); //end measure
-        self.record.group.0.borrow_mut().update_duration(self.record.index, dur);
-
+        let start = this.record.group.1.start(); //start measure
+        let res = this.future.poll(cx);
+        let dur = this.record.group.1.stop(start); //end measure
+        this.record.group.0.borrow_mut().update_duration(this.record.index, dur);
         return res;
     }
 }

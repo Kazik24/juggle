@@ -11,15 +11,39 @@ use super::handle::*;
 /// Single-thread async task scheduler with dynamic task state control.
 ///
 /// This structure is useful when you want to divide single thread to share processing power among
-/// multiple task without preemption.
-/// Tasks are scheduled using round-robin algorithm without priority. Which means that all tasks
-/// are not starved cause effectively they have all the same priority.
+/// multiple task using [cooperative multitasking](https://en.wikipedia.org/wiki/Cooperative_multitasking).
+///
+/// Tasks are scheduled using round-robin algorithm without priority. Diagram below shows simplified
+/// scheduling process.
+/// ```text
+///    Execute
+///       |
+///    +--v--+     +-----+-----+-----+-----+
+///    |     |     |     |     |     |     <---+
+///    | 0x0 | <-- | 0x8 | 0x9 | 0xA | 0xB |   |
+///    |     |     |     |     |     |     <-+ |
+///    +-----+ ... +-----+-----+-----+-----+ | |
+///       |                                  | |
+///       |                                  | |
+///   +---v---+                              | |
+///  /         \ YES                         | |
+/// + Runnable? +----------------------------+ |
+///  \         /                               |
+///   +-------+                                |
+///       | NO      +-----------------------+  |
+///       +---------> Wait for waking event |--+
+///                 +-----------------------+
+/// ```
+/// New and rescheduled tasks are added at the end of queue. Task on front is poped and executed.
+/// If task finishes or becomes cancelled then it is removed from scheduler, and if task is
+/// suspended then it is also removed but only from queue not the scheduler.
+/// Tasks that were blocked by some async event are checked periodically so their rescheduling
+/// might not happen immedialty after task is woken.
 ///
 /// # Managing tasks
 /// You can spawn/suspend/resume/cancel any task as long as you have it's key, and handle to this
-/// scheduler. Handle can be obtained from this object using method [`handle(&self)`][handle].
+/// scheduler. Handle can be obtained from this object using method [`handle(&self)`](#method.handle).
 ///
-/// [handle]: #method.handle
 /// # Examples
 /// ```
 /// # extern crate alloc;
@@ -48,7 +72,7 @@ use super::handle::*;
 /// async fn wait_for_timer(id: IdNum,queue: &RefCell<VecDeque<i32>>,handle: WheelHandle<'_>){
 ///     init_timer();
 ///     for _ in 0..5 {
-///         yield_until!(get_timer_value() >= 200); // busy wait but also executes other tasks.
+///         yield_while!(get_timer_value() < 200); // busy wait but also executes other tasks.
 ///         process_data(&mut queue.borrow_mut());
 ///         reset_timer();
 ///     }

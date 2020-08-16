@@ -96,8 +96,6 @@ impl<'futures> WheelHandle<'futures> {
     pub fn is_valid(&self) -> bool { self.ptr.strong_count() != 0 }
 
     /// Checks if this and the other handle reference the same [Wheel](struct.Wheel.html).
-    ///
-    /// If any of handles are [invalid](#method.is_valid) then this method returns false.
     /// # Examples
     /// ```
     /// use juggle::*;
@@ -112,14 +110,9 @@ impl<'futures> WheelHandle<'futures> {
     /// assert!(!h1.is_same(&other));
     /// ```
     pub fn is_same(&self, other: &WheelHandle<'_>) -> bool {
-        match (self.ptr.upgrade(), other.ptr.upgrade()) {
-            (Some(rc1), Some(rc2)) => {
-                let ptr1 = rc1.get() as *mut ();
-                let ptr2 = rc2.get() as *mut ();
-                ptr1 == ptr2
-            }
-            _ => false,
-        }
+        let ptr1 = self.ptr.as_ptr() as *const ();
+        let ptr2 = other.ptr.as_ptr() as *const ();
+        ptr1 == ptr2
     }
 
     /// Create new task and obtain its id.

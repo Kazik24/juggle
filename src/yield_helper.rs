@@ -10,7 +10,7 @@ pub struct Yield(bool);
 #[doc(hidden)]
 #[pin_project]
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub struct YieldUntil<F: FnMut() -> bool>(F);
+pub struct YieldWhile<F: FnMut() -> bool>(F);
 
 #[doc(hidden)]
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
@@ -19,7 +19,7 @@ pub struct YieldTimes { pub remaining: usize }
 impl Yield {
     /// When awaited yields this task once. Causes task switch.
     ///
-    /// For more convenient method of switching tasks see `yield_once!()` macro.
+    /// For more convenient method of switching tasks see [`yield_once!()`](macro.yield_once.html) macro.
     ///
     /// When resulting Future is polled, for the first time it notifies the waker and returns
     /// `Poll::Pending`, second and all other polls return `Poll::Ready(())`.
@@ -36,9 +36,9 @@ impl Yield {
     /// `Poll::Pending` 'remaining' number of times, all other polls return `Poll::Ready(())`.
     pub fn times(remaining: usize) -> YieldTimes { YieldTimes { remaining } }
 
-    /// When awaited yields this task until provided closure returns true.
+    /// When awaited yields this task until provided closure returns false.
     ///
-    /// Note that when first call on closure returns true, this task will not be yielded.
+    /// Note that when first call on closure returns false, this task will not be yielded.
     /// This method is usefull when we want to do busy wait but also leave cpu time for
     /// other tasks.
     /// # Examples
@@ -50,12 +50,12 @@ impl Yield {
     /// let interrupt_flag: &AtomicBool = //...
     /// # &AtomicBool::new(true);
     ///
-    /// Yield::until(||interrupt_flag.load(Ordering::Acquire)).await;
+    /// Yield::yield_while(||!interrupt_flag.load(Ordering::Acquire)).await;
     /// # });
     /// # }
     /// ```
-    pub fn until<F>(predicate: F) -> YieldUntil<F> where F: FnMut() -> bool {
-        YieldUntil(predicate)
+    pub fn yield_while<F>(predicate: F) -> YieldWhile<F> where F: FnMut() -> bool {
+        YieldWhile(predicate)
     }
 }
 
@@ -70,10 +70,10 @@ impl Future for Yield {
     }
 }
 
-impl<F: FnMut() -> bool> Future for YieldUntil<F> {
+impl<F: FnMut() -> bool> Future for YieldWhile<F> {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.project().0() { Poll::Ready(()) } else {
+        if !self.project().0() { Poll::Ready(()) } else {
             cx.waker().wake_by_ref();
             Poll::Pending
         }
