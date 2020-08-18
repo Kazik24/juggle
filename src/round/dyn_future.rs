@@ -3,18 +3,19 @@ use alloc::sync::Arc;
 use core::future::Future;
 use core::ops::Deref;
 use core::pin::Pin;
-use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::*;
 use crate::utils::{AtomicWakerRegistry, DynamicWake, to_waker};
+use core::cell::{UnsafeCell, Cell};
 
 pub(crate) struct DynamicFuture<'a> {
     //not send not sync
-    pinned_future: NonNull<dyn Future<Output=()> + 'a>,
+    pinned_future: UnsafeCell<Pin<Box<dyn Future<Output=()> + 'a>>>,
     flags: SyncFlags,
     name: TaskName,
-    suspended: bool,
-    cancelled: bool,
+    suspended: Cell<bool>,
+    cancelled: Cell<bool>,
+    polling: Cell<bool>,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -25,36 +26,18 @@ pub(crate) enum TaskName {
 }
 
 impl<'a> DynamicFuture<'a> {
-    //safe
-    pub fn new_allocated(future: Pin<Box<dyn Future<Output=()> + 'a>>,
-                         global: Arc<AtomicWakerRegistry>, suspended: bool) -> Self {
-        let ptr = unsafe {
-            NonNull::new_unchecked(Box::into_raw(Pin::into_inner_unchecked(future)))
-        };
+
+    pub fn new(future: Pin<Box<dyn Future<Output=()> + 'a>>, global: Arc<AtomicWakerRegistry>,
+               suspended: bool, name: TaskName) -> Self {
         Self {
-            pinned_future: ptr,
-            flags: SyncFlags::new(false, global),
-            name: TaskName::None,
-            suspended,
-            cancelled: false,
+            pinned_future: UnsafeCell::new(future),
+            flags: SyncFlags::new(global),
+            name,
+            suspended: Cell::new(suspended),
+            cancelled: Cell::new(false),
+            polling: Cell::new(false),
         }
     }
-    //unsafe cause this future can be pinned as local variable on stack, and we erase its lifetime so
-    //that that it need to be ensured that this object is not used after that variable gets dropped.
-    //todo might be used in the future
-    #[allow(unused)]
-    pub unsafe fn new_static(future: Pin<&mut (dyn Future<Output=()> + 'a)>,
-                             global: Arc<AtomicWakerRegistry>, suspended: bool) -> Self {
-        let ptr = NonNull::new_unchecked(Pin::into_inner_unchecked(future) as *mut _);
-        Self {
-            pinned_future: ptr,
-            flags: SyncFlags::new(true, global),
-            name: TaskName::None,
-            suspended,
-            cancelled: false,
-        }
-    }
-    pub fn set_name(&mut self, name: TaskName) { self.name = name; }
     pub fn get_name_str(&self) -> Option<&str> {
         match &self.name {
             TaskName::Static(s) => Some(s),
@@ -62,27 +45,26 @@ impl<'a> DynamicFuture<'a> {
             TaskName::None => None,
         }
     }
-    pub fn set_suspended(&mut self, val: bool) { self.suspended = val; }
-    pub fn is_suspended(&self) -> bool { self.suspended }
-    pub fn set_cancelled(&mut self, val: bool) { self.cancelled = val; }
-    pub fn is_cancelled(&self) -> bool { self.cancelled }
+    pub fn set_suspended(&self, val: bool) { self.suspended.set(val); }
+    pub fn is_suspended(&self) -> bool { self.suspended.get() }
+    pub fn set_cancelled(&self, val: bool) { self.cancelled.set(val); }
+    pub fn is_cancelled(&self) -> bool { self.cancelled.get() }
     pub fn is_runnable(&self) -> bool { self.flags.is_runnable() }
-    pub fn poll_local(&mut self) -> Poll<()> {
+    pub fn poll_local(&self) -> Poll<()> {
+        //guard against undefined behavior of borrowing UnsafeCell mutably twice.
+        if self.polling.replace(true) {
+            panic!("Recursive call to DynamicFuture::poll_local is not allowed.");
+        }
         //store false cause if it became true before this operation then polling can be done
         //if it becomes true after this operation but before poll then this also means that polling can be done
         self.flags.set_runnable(false);
-        let future = unsafe { Pin::new_unchecked(self.pinned_future.as_mut()) };
-        future.poll(&mut Context::from_waker(self.flags.waker_ref()))
-    }
-}
 
-impl<'a> Drop for DynamicFuture<'a> {
-    fn drop(&mut self) {
-        if !self.flags.is_static() {
-            unsafe {
-                drop(Box::from_raw(self.pinned_future.as_ptr())); //no need to wrap in pin
-            }
-        }
+        let result = unsafe{
+            let pin_ref = &mut *self.pinned_future.get();
+            pin_ref.as_mut().poll(&mut Context::from_waker(self.flags.waker_ref()))
+        };
+        self.polling.set(false);// unlock so that poll_local can be called again.
+        result
     }
 }
 
@@ -96,10 +78,9 @@ struct SyncFlags {
 }
 
 impl SyncFlags {
-    fn new(is_static: bool, global: Arc<AtomicWakerRegistry>) -> Self {
+    fn new(global: Arc<AtomicWakerRegistry>) -> Self {
         let flags = Arc::new(InnerSyncFlags {
             global,
-            is_static,
             runnable: AtomicBool::new(true),
         });
         Self {
@@ -108,7 +89,6 @@ impl SyncFlags {
         }
     }
     fn waker_ref(&self) -> &Waker { &self.waker }
-    fn is_static(&self) -> bool { self.flags.is_static }
     fn is_runnable(&self) -> bool { self.flags.runnable.load(Ordering::Relaxed) }
     fn set_runnable(&self, value: bool) { self.flags.runnable.store(value, Ordering::Release) }
 }
@@ -116,7 +96,6 @@ impl SyncFlags {
 struct InnerSyncFlags {
     global: Arc<AtomicWakerRegistry>,
     runnable: AtomicBool,
-    is_static: bool,
 }
 
 impl DynamicWake for InnerSyncFlags {

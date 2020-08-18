@@ -140,8 +140,7 @@ impl<'futures> WheelHandle<'futures> {
     pub fn spawn_dyn(&self, params: impl Into<SpawnParams>, future: Pin<Box<dyn Future<Output=()> + 'futures>>) -> Option<IdNum> {
         unwrap_weak!(self,this,None);
         let params = params.into();
-        let mut dynamic = DynamicFuture::new_allocated(future, this.clone_registry(), params.suspended);
-        dynamic.set_name(params.name);
+        let dynamic = DynamicFuture::new(future, this.clone_registry(), params.suspended,params.name);
         Some(IdNum::from_usize(this.register(dynamic) as usize))
     }
 
