@@ -42,7 +42,9 @@ use super::handle::*;
 ///
 /// # Managing tasks
 /// You can spawn/suspend/resume/cancel any task as long as you have it's key, and handle to this
-/// scheduler. Handle can be obtained from this object using method [`handle(&self)`](#method.handle).
+/// scheduler. Handle can be obtained from this object using method [`handle(&self)`](#method.handle),
+/// and task keys are returned from functions that spawn tasks
+/// (e.g [`spawn`](struct.WheelHandle.html#method.spawn))
 ///
 /// # Examples
 /// ```

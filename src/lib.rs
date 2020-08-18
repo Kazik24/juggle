@@ -78,7 +78,7 @@ pub use self::yield_helper::{Yield, YieldTimes, YieldWhile};
 
 
 
-/// Yield current task. Gives the sheduler opportunity to switch to another task.
+/// Yield current task. Gives the scheduler opportunity to switch to another task.
 /// Equivalent to [`Yield::once().await`](struct.Yield.html#method.once).
 ///
 /// # Examples
@@ -106,7 +106,7 @@ macro_rules! yield_once {
 
 
 /// Yield current task until specific expression becomes false.
-/// Gives the sheduler opportunity to switch to another task.
+/// Gives the scheduler opportunity to switch to another task.
 ///
 /// It is recommended to use this function instead of busy wait inside tasks within scheduler.
 ///
