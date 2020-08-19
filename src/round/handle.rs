@@ -1,7 +1,6 @@
 use alloc::boxed::Box;
-use alloc::rc::{Rc, Weak};
+use alloc::rc::Weak;
 use alloc::string::{String, ToString};
-use core::cell::UnsafeCell;
 use core::fmt::{Debug, Formatter};
 use core::future::Future;
 use core::pin::Pin;
@@ -11,7 +10,7 @@ use crate::round::dyn_future::{DynamicFuture, TaskName};
 /// Handle used to spawn and control tasks in assigned [Wheel](struct.Wheel.html).
 #[derive(Clone)]
 pub struct WheelHandle<'futures> {
-    ptr: Weak<UnsafeCell<SchedulerAlgorithm<'futures>>>,
+    ptr: Weak<SchedulerAlgorithm<'futures>>,
 }
 
 /// Represents identifier of task registered by [WheelHandle](struct.WheelHandle.html).
@@ -68,12 +67,12 @@ macro_rules! unwrap_weak {
             Some(v) => v,
             None => return $ret,
         };
-        let $this = Self::unchecked_mut(&rc);
+        let $this = rc;
     }
 }
 
 impl<'futures> WheelHandle<'futures> {
-    pub(crate) fn new(ptr: Weak<UnsafeCell<SchedulerAlgorithm<'futures>>>) -> Self { Self { ptr } }
+    pub(crate) fn new(ptr: Weak<SchedulerAlgorithm<'futures>>) -> Self { Self { ptr } }
 
 
     /// Checks if this handle is valid.
@@ -205,8 +204,7 @@ impl<'futures> WheelHandle<'futures> {
     /// id has no assigned task or this handle is invalid. Returns result of function call.
     pub fn with_name<F, T>(&self, id: IdNum, func: F) -> T where F: FnOnce(Option<&str>) -> T {
         unwrap_weak!(self,this,func(None));
-        let arg = this.get_dynamic(id.to_usize()).map(|v| v.get_name_str()).flatten();
-        func(arg)
+        this.with_name(id.to_usize(),func)
     }
     /// Returns name of current task as new String.
     /// Returns None when:
@@ -238,10 +236,6 @@ impl<'futures> WheelHandle<'futures> {
     pub fn get_by_name(&self, name: &str) -> Option<IdNum> {
         unwrap_weak!(self,this,None);
         this.get_by_name(name).map(|k| IdNum::from_usize(k))
-    }
-
-    fn unchecked_mut<'a>(rc: &'a Rc<UnsafeCell<SchedulerAlgorithm<'futures>>>) -> &'a mut SchedulerAlgorithm<'futures> {
-        unsafe { &mut *rc.get() }
     }
 
     fn fmt_name(&self, f: &mut Formatter<'_>, name: &str) -> core::fmt::Result {

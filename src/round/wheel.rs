@@ -1,5 +1,4 @@
 use alloc::rc::Rc;
-use core::cell::UnsafeCell;
 use core::fmt::{Display, Formatter};
 use core::fmt::Debug;
 use core::future::Future;
@@ -97,7 +96,7 @@ use super::handle::*;
 /// }
 /// ```
 pub struct Wheel<'futures> {
-    ptr: Rc<UnsafeCell<SchedulerAlgorithm<'futures>>>,
+    ptr: Rc<SchedulerAlgorithm<'futures>>,
     handle: WheelHandle<'futures>,
 }
 
@@ -118,7 +117,7 @@ impl<'futures> Wheel<'futures> {
         Self::from_inner(SchedulerAlgorithm::with_capacity(capacity))
     }
     fn from_inner(alg: SchedulerAlgorithm<'futures>) -> Self {
-        let ptr = Rc::new(UnsafeCell::new(alg));
+        let ptr = Rc::new(alg);
         let handle = WheelHandle::new(Rc::downgrade(&ptr));
         Self { ptr, handle }
     }
@@ -140,7 +139,7 @@ impl<'futures> Wheel<'futures> {
     pub fn lock(self) -> LockedWheel<'futures> {
         // rc has always strong count of 1 (it can have strong count > 1 during calls
         // on handle, but if these calls return then it will be back to 1)
-        let alg = Rc::try_unwrap(self.ptr).ok().expect("Cannot lock inside call to handle's method.").into_inner();
+        let alg = Rc::try_unwrap(self.ptr).ok().expect("Cannot lock inside call to handle's method.");
         LockedWheel { alg }
     }
 }
@@ -158,8 +157,7 @@ impl<'futures> LockedWheel<'futures> {
 
 impl<'futures> Debug for Wheel<'futures> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let this = unsafe { &*self.ptr.get() };
-        this.format_internal(f, "Wheel")
+        self.ptr.format_internal(f, "Wheel")
     }
 }
 
@@ -172,15 +170,15 @@ impl<'futures> Debug for LockedWheel<'futures> {
 
 impl<'futures> Future for Wheel<'futures> {
     type Output = Result<(), SuspendError>;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        unsafe { &mut *self.as_mut().ptr.get() }.poll_internal(cx).map(|flag| if flag { Ok(()) } else { Err(SuspendError) })
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.as_ref().ptr.poll_internal(cx).map(|flag| if flag { Ok(()) } else { Err(SuspendError) })
     }
 }
 
 impl<'futures> Future for LockedWheel<'futures> {
     type Output = Result<(), SuspendError>;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.as_mut().alg.poll_internal(cx).map(|flag| if flag { Ok(()) } else { Err(SuspendError) })
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.as_ref().alg.poll_internal(cx).map(|flag| if flag { Ok(()) } else { Err(SuspendError) })
     }
 }
 
