@@ -1,11 +1,12 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand::prelude::StdRng;
 use juggle::*;
 use juggle::utils::noop_waker;
 
@@ -282,4 +283,38 @@ fn test_suspend_waiting() {
     }).unwrap();
     smol::block_on(wheel).expect_err("Expected SuspendError");
     //assert!(false);
+}
+
+//todo add dynamic spawning test
+#[test]
+fn test_dynamic_spawn() {
+    async fn rec_bubble_sort<'a>(handle: WheelHandle<'a>, data: &'a RefCell<Vec<i32>>, len: usize) {
+        let mut vec = data.borrow_mut();
+        if len <= 1 { return; }
+        for i in 0..len - 1 {
+            yield_once!();
+            if vec[i] > vec[i + 1] {
+                vec.swap(i, i + 1);
+            }
+        }
+
+        handle.spawn(SpawnParams::default(), rec_bubble_sort(handle.clone(), data, len - 1)).unwrap();
+    }
+
+    let mut vec = Vec::new();
+    let mut rng = StdRng::seed_from_u64(12345);
+    for _ in 0..1000 {
+        vec.push(rng.gen());
+    }
+    let len = vec.len();
+    let cell = &RefCell::new(vec);
+    let wheel = Wheel::new();
+
+    wheel.handle().spawn(SpawnParams::default(), rec_bubble_sort(wheel.handle().clone(), cell, len)).unwrap();
+
+    smol::block_on(wheel).unwrap();
+
+    let mut sorted = cell.borrow().to_vec();
+    sorted.sort();
+    assert_eq!(cell.borrow().to_vec(), sorted);
 }

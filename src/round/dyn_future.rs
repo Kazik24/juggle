@@ -1,12 +1,12 @@
 use alloc::boxed::Box;
 use alloc::sync::Arc;
+use core::cell::{Cell, UnsafeCell};
 use core::future::Future;
 use core::ops::Deref;
 use core::pin::Pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::*;
 use crate::utils::{AtomicWakerRegistry, DynamicWake, to_waker};
-use core::cell::{UnsafeCell, Cell};
 
 pub(crate) struct DynamicFuture<'a> {
     //not send not sync
@@ -26,7 +26,6 @@ pub(crate) enum TaskName {
 }
 
 impl<'a> DynamicFuture<'a> {
-
     pub fn new(future: Pin<Box<dyn Future<Output=()> + 'a>>, global: Arc<AtomicWakerRegistry>,
                suspended: bool, name: TaskName) -> Self {
         Self {
@@ -59,7 +58,7 @@ impl<'a> DynamicFuture<'a> {
         //if it becomes true after this operation but before poll then this also means that polling can be done
         self.flags.set_runnable(false);
 
-        let result = unsafe{
+        let result = unsafe {
             let pin_ref = &mut *self.pinned_future.get();
             pin_ref.as_mut().poll(&mut Context::from_waker(self.flags.waker_ref()))
         };
