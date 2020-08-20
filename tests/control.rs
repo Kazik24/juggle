@@ -285,7 +285,6 @@ fn test_suspend_waiting() {
     //assert!(false);
 }
 
-//todo add dynamic spawning test
 #[test]
 fn test_dynamic_spawn() {
     async fn rec_bubble_sort<'a>(handle: WheelHandle<'a>, data: &'a RefCell<Vec<i32>>, len: usize) {
@@ -307,14 +306,14 @@ fn test_dynamic_spawn() {
         vec.push(rng.gen());
     }
     let len = vec.len();
-    let cell = &RefCell::new(vec);
+    let cell = RefCell::new(vec);
     let wheel = Wheel::new();
 
-    wheel.handle().spawn(SpawnParams::default(), rec_bubble_sort(wheel.handle().clone(), cell, len)).unwrap();
+    wheel.handle().spawn(SpawnParams::default(), rec_bubble_sort(wheel.handle().clone(), &cell, len)).unwrap();
 
     smol::block_on(wheel).unwrap();
 
     let mut sorted = cell.borrow().to_vec();
     sorted.sort();
-    assert_eq!(cell.borrow().to_vec(), sorted);
+    assert_eq!(cell.into_inner(), sorted);
 }

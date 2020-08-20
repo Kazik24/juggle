@@ -2,6 +2,7 @@ mod dyn_future;
 mod algorithm;
 mod wheel;
 mod handle;
+mod registry;
 
 pub use self::handle::{IdNum, SpawnParams, State, WheelHandle};
 pub use self::wheel::{LockedWheel, SuspendError, Wheel};
@@ -15,7 +16,7 @@ pub(crate) struct Ucw<T>{
 }
 
 pub(crate) struct UcwRef<'a,T>{
-    inner: Ref<'a,T>,
+    pub(crate)inner: Ref<'a,T>,
 }
 pub(crate) struct UcwRefMut<'a,T>{
     inner: RefMut<'a,T>,
