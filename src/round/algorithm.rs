@@ -131,7 +131,10 @@ impl<'futures> SchedulerAlgorithm<'futures> {
     pub(crate) fn get_state(&self, key: TaskKey) -> State {
         match self.ctrl.registry.get(key) {
             Some(task) => {
-                if task.is_cancelled() { State::Cancelled } else if task.is_suspended() { State::Suspended } else if task.is_runnable() { State::Runnable } else { State::Waiting }
+                if task.is_cancelled() { State::Cancelled }
+                else if task.is_suspended() { State::Suspended }
+                else if task.is_runnable() { State::Runnable }
+                else { State::Waiting }
             }
             None => State::Unknown,
         }

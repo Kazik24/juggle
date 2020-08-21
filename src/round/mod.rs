@@ -12,14 +12,23 @@ use core::ops::{Deref, DerefMut};
 
 //unsafe cell wrapper
 pub(crate) struct Ucw<T>{
+    #[cfg(debug_assertions)]
     inner: RefCell<T>,
+    #[cfg(not(debug_assertions))]
+    inner: UnsafeCell<T>,
 }
 
 pub(crate) struct UcwRef<'a,T>{
-    pub(crate)inner: Ref<'a,T>,
+    #[cfg(debug_assertions)]
+    inner: Ref<'a,T>,
+    #[cfg(not(debug_assertions))]
+    inner: &'a T,
 }
 pub(crate) struct UcwRefMut<'a,T>{
+    #[cfg(debug_assertions)]
     inner: RefMut<'a,T>,
+    #[cfg(not(debug_assertions))]
+    inner: &'a mut T,
 }
 impl<T> Deref for UcwRef<'_,T>{
     type Target = T;
@@ -34,9 +43,30 @@ impl<T> DerefMut for UcwRefMut<'_,T>{
 }
 
 impl<T> Ucw<T>{
-    pub(crate) fn new(value: T)->Self{ Self{inner:RefCell::new(value)} }
-    pub(crate) fn borrow(&self)->UcwRef<T>{ UcwRef{ inner: self.inner.borrow() }}
-    pub(crate) fn borrow_mut(&self)->UcwRefMut<T>{ UcwRefMut{ inner: self.inner.borrow_mut() }}
+    pub(crate) fn new(value: T)->Self{
+        Self{
+            #[cfg(debug_assertions)]
+            inner: RefCell::new(value),
+            #[cfg(not(debug_assertions))]
+            inner: UnsafeCell::new(value),
+        }
+    }
+    pub(crate) fn borrow(&self)->UcwRef<T>{
+        UcwRef{
+            #[cfg(debug_assertions)]
+            inner: self.inner.borrow(),
+            #[cfg(not(debug_assertions))]
+            inner: unsafe{ &*self.inner.get() },
+        }
+    }
+    pub(crate) fn borrow_mut(&self)->UcwRefMut<T>{
+        UcwRefMut{
+            #[cfg(debug_assertions)]
+            inner: self.inner.borrow_mut(),
+            #[cfg(not(debug_assertions))]
+            inner: unsafe{ &mut *self.inner.get() },
+        }
+    }
 }
 
 
