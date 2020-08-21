@@ -21,5 +21,9 @@ jobs:
       run: cargo build
     - name: Run tests with no_std
       run: cargo test --no-default-features
+    - name: Run tests with no_std in release mode
+      run: cargo test --no-default-features --release
     - name: Run tests default
       run: cargo test
+    - name: Run tests default in release mode
+      run: cargo test --release
