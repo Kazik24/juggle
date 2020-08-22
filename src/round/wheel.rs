@@ -112,7 +112,8 @@ impl<'futures> Wheel<'futures> {
         Self::from_inner(SchedulerAlgorithm::new())
     }
 
-    /// Create new instance that can contain at least `capacity` number of tasks without reallocating.
+    /// Create new instance that can contain at least `capacity` number of tasks without
+    /// reallocating internal buffers. Allocation might happen anyway when spawning tasks.
     pub fn with_capacity(capacity: usize) -> Self {
         Self::from_inner(SchedulerAlgorithm::with_capacity(capacity))
     }

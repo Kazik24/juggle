@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use alloc::rc::Weak;
 use alloc::string::{String, ToString};
+use alloc::borrow::Cow;
 use core::fmt::{Debug, Formatter};
 use core::future::Future;
 use core::pin::Pin;
@@ -22,6 +23,7 @@ pub struct IdNum(core::num::NonZeroUsize);
 
 impl IdNum {
     fn from_usize(v: usize) -> Self {
+        //SAFETY: any value + 1 is non-zero, except usize::MAX which should panic in debug mode
         Self(unsafe { core::num::NonZeroUsize::new_unchecked(v + 1) })
     }
     fn to_usize(self) -> usize {
@@ -114,6 +116,15 @@ impl<'futures> WheelHandle<'futures> {
         ptr1 == ptr2
     }
 
+    /// Create new task and obtain its id, equivalent to: `spawn(SpawnParams::default(), future)`.
+    /// # Arguments
+    /// * `future` - The future you want to schedule.
+    ///
+    /// Allocates new task inside associated [Wheel](struct.Wheel.html). Returns identifier of newly
+    /// allocated task or `None` if this handle is [`invalid`](#method.is_valid).
+    pub fn spawn_default<F>(&self, future: F) -> Option<IdNum> where F: Future<Output=()> + 'futures {
+        self.spawn_dyn(SpawnParams::default(), Box::pin(future))
+    }
     /// Create new task and obtain its id.
     ///
     /// # Arguments
@@ -122,7 +133,7 @@ impl<'futures> WheelHandle<'futures> {
     ///
     /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
     /// parameters of this task. Returns identifier of newly allocated task or None if this
-    /// handle is invalid.
+    /// handle is [`invalid`](#method.is_valid).
     pub fn spawn<F>(&self, params: impl Into<SpawnParams>, future: F) -> Option<IdNum> where F: Future<Output=()> + 'futures {
         self.spawn_dyn(params, Box::pin(future))
     }
@@ -135,7 +146,7 @@ impl<'futures> WheelHandle<'futures> {
     ///
     /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
     /// parameters of this task. Returns identifier of newly allocated task or None if this
-    /// handle is invalid.
+    /// handle is [`invalid`](#method.is_valid).
     pub fn spawn_dyn(&self, params: impl Into<SpawnParams>, future: Pin<Box<dyn Future<Output=()> + 'futures>>) -> Option<IdNum> {
         unwrap_weak!(self,this,None);
         let params = params.into();
@@ -190,47 +201,94 @@ impl<'futures> WheelHandle<'futures> {
     }
     /// Get id of currently executing task.
     ///
-    /// Returns None when:
+    /// Returns `None` when:
     /// * Not called inside task.
     /// * Handle is [`invalid`](#method.is_valid).
+    ///
+    /// # Examples
+    /// ```
+    /// use juggle::*;
+    ///
+    /// async fn self_cancelling_task(handle: WheelHandle<'_>){
+    ///     let id = handle.current().unwrap();
+    ///     handle.cancel(id);
+    ///     yield_once!(); // give control to scheduler
+    ///
+    ///     unreachable!("This line will never be reached.");
+    /// }
+    ///
+    /// let wheel = Wheel::new();
+    /// let handle = wheel.handle();
+    /// handle.spawn(SpawnParams::default(), self_cancelling_task(handle.clone())).unwrap();
+    /// smol::block_on(wheel).unwrap();
+    /// ```
     pub fn current(&self) -> Option<IdNum> {
         unwrap_weak!(self,this,None);
         this.get_current().map(|t| IdNum::from_usize(t))
     }
 
-    /// Applies given function on reference to given task name.
+    /// Applies given function on reference to given task name and returns result of that function.
     ///
-    /// Function argument is a name of task with specified id or None if task has no name, given
-    /// id has no assigned task or this handle is invalid. Returns result of function call.
-    pub fn with_name<F, T>(&self, id: IdNum, func: F) -> T where F: FnOnce(Option<&str>) -> T {
-        unwrap_weak!(self,this,func(None));
-        this.with_name(id.to_usize(), func)
-    }
-    /// Returns name of current task as new String.
-    /// Returns None when:
-    /// * Task is unnamed.
-    /// * This method was not called inside task.
-    /// * Handle is [`invalid`](#method.is_valid).
-    ///
-    /// Note that this method allocates new string. If you don't want to allocate temporary memory
-    /// for string use [`with_name`](#method.with_name).
-    pub fn get_current_name(&self) -> Option<String> {
-        self.current().map(|id| self.get_name(id)).flatten()
-    }
-    /// Returns name of task with specific id as new String.
-    /// Returns None when:
+    /// The argument that is passed to `func` is `None` when:
     /// * Task is unnamed.
     /// * Given id is not assigned to any task.
     /// * Handle is [`invalid`](#method.is_valid).
     ///
-    /// Note that this method allocates new string. If you don't want to allocate temporary memory
-    /// for string use [`with_name`](#method.with_name).
-    pub fn get_name(&self, id: IdNum) -> Option<String> {
-        self.with_name(id, |s| s.map(|s| s.to_string()))
+    /// # Examples
+    /// ```
+    /// use juggle::*;
+    ///
+    /// let wheel = Wheel::new();
+    /// let bark = wheel.handle().spawn(SpawnParams::named("Dog"), async {/*...*/}).unwrap();
+    /// let meow = wheel.handle().spawn(SpawnParams::named("Cat"), async {/*...*/}).unwrap();
+    /// let none = wheel.handle().spawn(SpawnParams::default(), async {/*...*/}).unwrap();
+    ///
+    /// assert!(wheel.handle().with_name(bark, |name| name == Some("Dog")));
+    /// assert!(wheel.handle().with_name(meow, |name| name == Some("Cat")));
+    /// assert!(wheel.handle().with_name(none, |name| name == None));
+    /// ```
+    ///
+    pub fn with_name<F, T>(&self, id: IdNum, func: F) -> T where F: FnOnce(Option<&str>) -> T {
+        unwrap_weak!(self,this,func(None));
+        this.with_name(id.to_usize(),move |name|func(name.as_str()))
+    }
+    /// Returns name of current task as new String.
+    ///
+    /// Returns `None` when:
+    /// * Task is unnamed.
+    /// * This method was not called inside task.
+    /// * Handle is [`invalid`](#method.is_valid).
+    ///
+    /// Note that if current task was named with static lifetime string, it will be returned from
+    /// this method as `Cow::Borrowed`. When task has dynamic name then `Cow::Owned` is returned
+    /// with fresh allocated `String` of that name. If you don't want to allocate temporary memory
+    /// for string use in such case, use [`with_name`](#method.with_name).
+    pub fn get_current_name(&self) -> Option<Cow<'static,str>> {
+        self.current().map(|id| self.get_name(id)).flatten()
+    }
+    /// Returns name of task with given id.
+    /// Returns `None` when:
+    /// * Task is unnamed.
+    /// * Given id is not assigned to any task.
+    /// * Handle is [`invalid`](#method.is_valid).
+    ///
+    /// Note that if specified task was named with static lifetime string, it will be returned from
+    /// this method as `Cow::Borrowed`. When task has dynamic name then `Cow::Owned` is returned
+    /// with fresh allocated `String` of that name. If you don't want to allocate temporary memory
+    /// for string use in such case, use [`with_name`](#method.with_name).
+    pub fn get_name(&self, id: IdNum) -> Option<Cow<'static,str>> {
+        unwrap_weak!(self,this,None);
+        this.with_name(id.to_usize(),move |name|{
+            match name {
+                TaskName::Static(s) => Some(Cow::<'static,str>::Borrowed(s)),
+                TaskName::Dynamic(s) => Some(Cow::<'static,str>::Owned(s.to_string())),
+                TaskName::None => None,
+            }
+        })
     }
     /// Find task id that has name equal to given argument.
     ///
-    /// Returns None when:
+    /// Returns `None` when:
     /// * Task was not found.
     /// * Handle is [`invalid`](#method.is_valid).
     pub fn get_by_name(&self, name: &str) -> Option<IdNum> {

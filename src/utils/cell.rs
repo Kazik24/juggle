@@ -35,7 +35,7 @@ impl<T> AtomicCell<T> {
     /// of arbitrary size. This method might fail in case some other thread is now modifying this value.
     /// In case of failure you can perform additional checks or try to swap value again until success.
     pub fn try_swap(&self, value: T) -> Result<T, T> {
-        if self.mark.compare_and_swap(false, true, Ordering::Acquire) { //other thread interfered
+        if self.mark.compare_and_swap(false, true, Ordering::AcqRel) { //other thread interfered
             Err(value)
         } else {
             //we know for sure we are only thread writing to this location
@@ -80,7 +80,7 @@ impl<T> AtomicCell<T> {
     /// of arbitrary size. This method might fail in case some other thread is now modifying this value.
     /// In case of failure you can perform additional checks or try to apply action again until success.
     pub fn try_apply<F, R>(&self, func: F) -> Result<R, F> where F: FnOnce(&mut T) -> R, T: Copy {
-        if self.mark.compare_and_swap(false, true, Ordering::Acquire) { //other thread interfered
+        if self.mark.compare_and_swap(false, true, Ordering::AcqRel) { //other thread interfered
             Err(func)
         } else {
             //we know for sure we are only thread writing to this location

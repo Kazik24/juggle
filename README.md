@@ -35,7 +35,7 @@ async fn collect_temperature(queue: &RefCell<VecDeque<i32>>,handle: WheelHandle<
 async fn wait_for_timer(id: IdNum,queue: &RefCell<VecDeque<i32>>,handle: WheelHandle<'_>){
     init_timer();
     for _ in 0..5 {
-        yield_until!(get_timer_value() >= 200); // busy wait but also executes other tasks.
+        yield_while!(get_timer_value() < 200); // busy wait but also executes other tasks.
         process_data(&mut queue.borrow_mut());
         reset_timer();
     }

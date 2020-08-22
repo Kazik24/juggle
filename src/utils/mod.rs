@@ -39,6 +39,7 @@ pub trait DynamicWake {
 pub fn to_waker<T: DynamicWake + Send + Sync + 'static>(ptr: Arc<T>) -> Waker {
     let data = Arc::into_raw(ptr) as *const ();
     let vtable = &Helper::<T>::VTABLE;
+    //SAFETY: waker contract upheld.
     unsafe { Waker::from_raw(RawWaker::new(data, vtable)) }
 }
 
@@ -49,6 +50,7 @@ pub fn to_waker<T: DynamicWake + Send + Sync + 'static>(ptr: Arc<T>) -> Waker {
 pub fn noop_waker() -> Waker {
     fn clone_func(_: *const ()) -> RawWaker { RawWaker::new(null(), &TABLE) }
     static TABLE: RawWakerVTable = RawWakerVTable::new(clone_func, dummy, dummy, dummy);
+    //SAFETY: waker contract upheld.
     unsafe { Waker::from_raw(RawWaker::new(null(), &TABLE)) }
 }
 
@@ -84,19 +86,23 @@ impl<T: DynamicWake + Send + Sync + 'static> Helper<T> {
         Self::waker_wake_by_ref,
         Self::waker_drop,
     );
+    //SAFETY: ptr always contains valid Arc<T>
     unsafe fn waker_clone(ptr: *const ()) -> RawWaker {
         let arc = mem::ManuallyDrop::new(Arc::from_raw(ptr as *const T));
         mem::forget(arc.clone());
         RawWaker::new(ptr, &Self::VTABLE)
     }
+    //SAFETY: ptr always contains valid Arc<T>
     unsafe fn waker_wake(ptr: *const ()) {
         let arc = Arc::from_raw(ptr as *const T);
         arc.wake();
     }
+    //SAFETY: ptr always contains valid Arc<T>
     unsafe fn waker_wake_by_ref(ptr: *const ()) {
         let arc = mem::ManuallyDrop::new(Arc::from_raw(ptr as *const T));
         arc.wake();
     }
+    //SAFETY: ptr always contains valid Arc<T>
     unsafe fn waker_drop(ptr: *const ()) {
         mem::drop(Arc::from_raw(ptr as *const T));
     }

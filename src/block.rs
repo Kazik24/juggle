@@ -64,6 +64,8 @@ pub fn spin_block_on<F>(future: F) -> F::Output where F: Future {
 /// assert_eq!(yield_count,10);
 /// ```
 pub fn block_on<F>(mut future: F, mut on_pending: impl FnMut(), waker: &Waker) -> F::Output where F: Future {
+    // SAFETY: we know this future is on stack and cannot be moved in other way
+    // because this block shadows it, preventing from access.
     let mut future = unsafe { Pin::new_unchecked(&mut future) };
     let mut ctx = Context::from_waker(waker);
     loop {

@@ -6,7 +6,7 @@ use core::fmt::{Debug, Formatter};
 use core::fmt::Result;
 use core::mem::swap;
 use core::task::{Context, Poll, Waker};
-use crate::round::dyn_future::DynamicFuture;
+use crate::round::dyn_future::{DynamicFuture, TaskName};
 use crate::round::handle::State;
 use crate::round::registry::Registry;
 use crate::round::Ucw;
@@ -156,7 +156,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
     }
     pub(crate) fn get_by_name(&self, name: &str) -> Option<TaskKey> {
         for (k, v) in self.ctrl.registry.iter() {
-            match v.get_name_str() {
+            match v.get_name().as_str() {
                 Some(n) if n == name => return Some(k),
                 _ => {}
             }
@@ -164,10 +164,10 @@ impl<'futures> SchedulerAlgorithm<'futures> {
         None
     }
 
-    pub fn with_name<F, T>(&self, id: TaskKey, func: F) -> T where F: FnOnce(Option<&str>) -> T {
+    pub fn with_name<F, T>(&self, id: TaskKey, func: F) -> T where F: FnOnce(&TaskName) -> T {
         match self.ctrl.registry.get(id) {
-            Some(task) => func(task.get_name_str()),
-            None => func(None),
+            Some(task) => func(task.get_name()),
+            None => func(&TaskName::None),
         }
     }
 
@@ -182,7 +182,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
                 match self.1 {
                     Some(id) => {
                         if let Some(task) = self.0.get(id) {
-                            return match task.get_name_str() {
+                            return match task.get_name().as_str() {
                                 Some(s) => write!(f, "0x{:X}:{}", id, s),
                                 None => write!(f, "0x{:X}", id),
                             };

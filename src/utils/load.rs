@@ -1,10 +1,10 @@
 use alloc::rc::Rc;
-use core::cell::RefCell;
 use core::fmt::{Debug, Formatter};
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use crate::utils::{TimerClock, TimingGroup};
+use crate::round::Ucw;
 use pin_project::*;
 
 /// Helper for equally dividing time slots across multiple tasks.
@@ -28,13 +28,15 @@ pub struct LoadBalance<F: Future, C: TimerClock> {
 
 struct Registered<C: TimerClock> {
     index: usize,
-    group: Rc<(RefCell<TimingGroup<C::Duration>>, C)>,
+    group: Rc<(Ucw<TimingGroup<C::Duration>>, C)>,
 }
 
 impl<C: TimerClock> Registered<C> {
-    fn unregister_and_get(self) -> Rc<(RefCell<TimingGroup<C::Duration>>, C)> {
+    fn unregister_and_get(self) -> Rc<(Ucw<TimingGroup<C::Duration>>, C)> {
         //equivalent to running drop
         self.group.0.borrow_mut().remove(self.index);
+        //SAFETY: we just run destructor code, now perform moving value out, and suppress
+        //real destructor.
         unsafe {
             let rc = core::ptr::read(&self.group as *const _);//take by force!
             core::mem::forget(self); //you'd better not drop it!
@@ -60,7 +62,7 @@ impl<F: Future, C: TimerClock> LoadBalance<F, C> {
         Self {
             record: Registered {
                 index: key,
-                group: Rc::new((RefCell::new(group), clock)),
+                group: Rc::new((Ucw::new(group), clock)),
             },
             future,
         }

@@ -10,7 +10,10 @@ pub use self::wheel::{LockedWheel, SuspendError, Wheel};
 use core::cell::*;
 use core::ops::{Deref, DerefMut};
 
-//unsafe cell wrapper
+/// UnsafeCell wrapper.
+/// SAFETY: this struct is intended only to use inside this crate.
+/// It provides runtime borrow checking in debug mode and only wraps UnsafeCell without any
+/// checks in release mode.
 pub(crate) struct Ucw<T>{
     #[cfg(debug_assertions)]
     inner: RefCell<T>,

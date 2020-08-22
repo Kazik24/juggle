@@ -3,7 +3,6 @@ use crate::round::algorithm::TaskKey;
 use crate::round::dyn_future::DynamicFuture;
 use core::cell::*;
 use core::ops::Deref;
-use cfg_if::*;
 
 pub(crate) struct Registry<'future>{
     slab: UnsafeCell<ChunkSlab<TaskKey,DynamicFuture<'future>>>,
@@ -94,6 +93,7 @@ impl<'future> Registry<'future>{
     }
 
     #[cfg(debug_assertions)]
+    #[inline]
     fn guarded_iterator(&self) -> impl Iterator<Item=(usize, &DynamicFuture<'future>)> {
         struct It<'a,T>(T,&'a Cell<usize>);
         impl<T> Drop for It<'_,T>{
@@ -114,13 +114,9 @@ impl<'future> Registry<'future>{
 
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item=(usize, &DynamicFuture<'future>)>{
-        cfg_if!{
-            if #[cfg(debug_assertions)] {
-                self.guarded_iterator()
-            } else {
-                let r = unsafe{ &*self.slab.get() };
-                r.iter()
-            }
-        }
+        #[cfg(debug_assertions)]
+        return self.guarded_iterator();
+        #[cfg(not(debug_assertions))]
+        return unsafe{ (&*self.slab.get()).iter() };
     }
 }
