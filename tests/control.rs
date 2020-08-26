@@ -1,23 +1,14 @@
+mod test_util;
+use test_util::*;
 use std::cell::{Cell, RefCell};
 use std::future::Future;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
-use std::thread::{sleep, spawn};
+use std::task::{Context, Poll};
 use std::time::Duration;
 use rand::{Rng, SeedableRng};
 use rand::prelude::StdRng;
 use juggle::*;
 use juggle::utils::noop_waker;
 
-async fn panic_if(do_panic: &Cell<bool>) {
-    loop {
-        if do_panic.get() {
-            unreachable!("Panic flag is set.");
-        }
-        yield_once!();
-    }
-}
 
 #[test]
 #[should_panic]
@@ -107,47 +98,6 @@ async fn self_suspend(handle: WheelHandle<'_>, after: usize) {
         assert_eq!(id, handle.current().unwrap());
     }
     handle.suspend(id);
-}
-
-#[derive(Clone)]
-struct Signal(Arc<Mutex<(Option<Waker>, bool, usize)>>);
-
-impl Future for Signal {
-    type Output = ();
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut guard = self.0.lock().unwrap();
-        guard.2 += 1; //inc poll count
-        if guard.1 {
-            guard.1 = false; //reset signal
-            guard.0 = None;
-            Poll::Ready(())
-        } else {
-            guard.0 = Some(cx.waker().clone());
-            Poll::Pending
-        }
-    }
-}
-
-impl Signal {
-    pub fn new() -> Self { Self(Arc::new(Mutex::new((None, false, 0)))) }
-    pub fn poll_count(&self) -> usize { self.0.lock().unwrap().2 }
-    pub fn signal(&self, full: bool) {
-        let mut guard = self.0.lock().unwrap();
-        guard.1 = full;
-        if let Some(waker) = guard.0.take() {
-            waker.wake();
-        }
-    }
-}
-
-fn signal_after(dur: Duration) -> impl Future<Output=()> {
-    let result = Signal::new();
-    let ptr = result.clone();
-    spawn(move || {
-        sleep(dur);
-        ptr.signal(true);
-    });
-    result
 }
 
 
@@ -282,7 +232,6 @@ fn test_suspend_waiting() {
         handle.suspend(waiting);
     }).unwrap();
     smol::block_on(wheel).expect_err("Expected SuspendError");
-    //assert!(false);
 }
 
 #[test]

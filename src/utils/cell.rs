@@ -3,6 +3,7 @@ use core::fmt::{Debug, Formatter};
 use core::mem::{forget, ManuallyDrop};
 use core::ops::DerefMut;
 use core::sync::atomic::*;
+use core::convert::identity;
 
 /// Wrapper struct that allows modifying and swapping value without using locks.
 ///
@@ -35,8 +36,9 @@ impl<T> AtomicCell<T> {
     /// of arbitrary size. This method might fail in case some other thread is now modifying this value.
     /// In case of failure you can perform additional checks or try to swap value again until success.
     pub fn try_swap(&self, value: T) -> Result<T, T> {
-        if self.mark.compare_and_swap(false, true, Ordering::AcqRel) { //other thread interfered
-            Err(value)
+        let res = self.mark.compare_exchange_weak(false, true, Ordering::AcqRel, Ordering::Acquire);
+        if res.unwrap_or_else(identity) {
+            Err(value) //other thread interfered
         } else {
             //we know for sure we are only thread writing to this location
             //swap values
@@ -80,8 +82,9 @@ impl<T> AtomicCell<T> {
     /// of arbitrary size. This method might fail in case some other thread is now modifying this value.
     /// In case of failure you can perform additional checks or try to apply action again until success.
     pub fn try_apply<F, R>(&self, func: F) -> Result<R, F> where F: FnOnce(&mut T) -> R, T: Copy {
-        if self.mark.compare_and_swap(false, true, Ordering::AcqRel) { //other thread interfered
-            Err(func)
+        let res = self.mark.compare_exchange_weak(false, true, Ordering::AcqRel, Ordering::Acquire);
+        if res.unwrap_or_else(identity) {
+            Err(func) //other thread interfered
         } else {
             //we know for sure we are only thread writing to this location
             struct UnwindGuard<'a>(&'a AtomicBool);

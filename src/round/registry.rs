@@ -4,6 +4,10 @@ use crate::round::dyn_future::DynamicFuture;
 use core::cell::*;
 use core::ops::Deref;
 
+/// ChunkSlab wrapper with interior mutability.
+/// SAFETY: Intended only to use inside this crate.
+/// Provides runtime borrow checking in debug mode and only wraps UnsafeCell without any
+/// checks in release mode.
 pub(crate) struct Registry<'future>{
     slab: UnsafeCell<ChunkSlab<TaskKey,DynamicFuture<'future>>>,
     #[cfg(debug_assertions)]

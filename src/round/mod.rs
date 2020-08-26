@@ -11,8 +11,8 @@ use core::cell::*;
 use core::ops::{Deref, DerefMut};
 
 /// UnsafeCell wrapper.
-/// SAFETY: this struct is intended only to use inside this crate.
-/// It provides runtime borrow checking in debug mode and only wraps UnsafeCell without any
+/// SAFETY: Intended only to use inside this crate.
+/// Provides runtime borrow checking in debug mode and only wraps UnsafeCell without any
 /// checks in release mode.
 pub(crate) struct Ucw<T>{
     #[cfg(debug_assertions)]
@@ -54,7 +54,7 @@ impl<T> Ucw<T>{
             inner: UnsafeCell::new(value),
         }
     }
-    pub(crate) fn borrow(&self)->UcwRef<T>{
+    pub(crate) fn borrow(&self)->UcwRef<'_,T>{
         UcwRef{
             #[cfg(debug_assertions)]
             inner: self.inner.borrow(),
@@ -62,7 +62,7 @@ impl<T> Ucw<T>{
             inner: unsafe{ &*self.inner.get() },
         }
     }
-    pub(crate) fn borrow_mut(&self)->UcwRefMut<T>{
+    pub(crate) fn borrow_mut(&self)->UcwRefMut<'_,T>{
         UcwRefMut{
             #[cfg(debug_assertions)]
             inner: self.inner.borrow_mut(),

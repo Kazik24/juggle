@@ -336,7 +336,7 @@ impl Control<'_> {
         }
     }
 
-    fn drain_runnable(registry: &Registry,
+    fn drain_runnable(registry: &Registry<'_>,
                       from: &mut Vec<TaskKey>, to: &mut VecDeque<TaskKey>) -> bool {
         let prev = from.len();
         from.retain(|&elem| {
