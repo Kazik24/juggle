@@ -6,7 +6,7 @@ use core::time::Duration;
 use crate::chunk_slab::ChunkSlab;
 
 /// Custom time source. Implement this trait if you want to provide your own time source for
-/// [LoadBalance](struct.LoadBalance.html) group.
+/// [`LoadBalance`](struct.LoadBalance.html) group.
 ///
 /// # Examples
 /// Example implementation using some arbitrary timer.
@@ -85,10 +85,10 @@ impl TimerCount for Duration {
 /// Helper for equally dividing time slots across multiple entries manually.
 ///
 /// This struct can be used to control time usage of some arbitrary entries and to ensure they have
-/// more-less equal amount of time per slot to assign. [LoadBalance](struct.LoadBalance.html)
+/// more-less equal amount of time per slot to assign. [`LoadBalance`](struct.LoadBalance.html)
 /// group uses this struct to split time slots between tasks.
 ///
-/// You can use custom time units by implementing trait [TimerCount](trait.TimerCount.html).
+/// You can use custom time units by implementing trait [`TimerCount`](trait.TimerCount.html).
 pub struct TimingGroup<C: TimerCount> {
     info: ChunkSlab<usize, TimeEntry<C>>,
     max: C,

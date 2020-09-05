@@ -1,10 +1,10 @@
 //! Couple of helpful utilities.
 //!
 //! This module contains stuff useful for:
-//! * Dividing CPU usage between multiple tasks ([LoadBalance](struct.LoadBalance.html)).
-//! * Sharing value between threads without using locks ([AtomicCell](struct.AtomicCell.html)).
-//! * Creating `Waker`s ([to_waker](fn.to_waker.html), [func_waker](fn.func_waker.html),
-//! [noop_waker](fn.noop_waker.html)).
+//! * Dividing CPU usage between multiple tasks ([`LoadBalance`](struct.LoadBalance.html)).
+//! * Sharing value between threads without using locks ([`AtomicCell`](struct.AtomicCell.html)).
+//! * Creating `Waker`s ([`to_waker`](fn.to_waker.html), [`func_waker`](fn.func_waker.html),
+//! [`noop_waker`](fn.noop_waker.html)).
 
 
 
@@ -24,17 +24,17 @@ pub use timing::{TimerClock, TimerCount, TimingGroup};
 pub use timing::StdTimerClock;
 
 
-/// Implement this trait if you want to create custom waker with [to_waker](fn.to_waker.html) function.
+/// Implement this trait if you want to create custom waker with [`to_waker`](fn.to_waker.html) function.
 pub trait DynamicWake {
     /// Perform waking action.
     fn wake(&self);
 }
 
-/// Convert atomic reference counted pointer to type implementing [DynamicWake](trait.DynamicWake.html)
+/// Convert atomic reference counted pointer to type implementing [`DynamicWake`](trait.DynamicWake.html)
 /// into Waker.
 ///
 /// Returned waker wraps given Arc so that cloning the waker will result also in cloning underlined
-/// Arc. Invoking Waker's `wake` or `wake_by_ref` will call [wake](trait.DynamicWake.html#tymethod.wake)
+/// Arc. Invoking Waker's `wake` or `wake_by_ref` will call [`wake`](trait.DynamicWake.html#tymethod.wake)
 /// on passed type implementing trait.
 pub fn to_waker<T: DynamicWake + Send + Sync + 'static>(ptr: Arc<T>) -> Waker {
     let data = Arc::into_raw(ptr) as *const ();
@@ -58,12 +58,12 @@ fn dummy(_: *const ()) {}
 
 /// Returns waker that performs action from specified function pointer when waked.
 ///
-/// Returned waker can be supplied to [block_on](../fn.block_on.html) function to perform some
+/// Returned waker can be supplied to [`block_on`](../fn.block_on.html) function to perform some
 /// action when waked.
 pub fn func_waker(func_ptr: fn()) -> Waker {
     if mem::size_of::<*const ()>() < mem::size_of::<fn()>() {
         panic!("Incompatible pointer types."); // to make sure, should be ditched by compiler.
-        //todo add some replacement logic here, maybe allocate box or sth.
+        //todo add some replacement logic here, maybe allocate arc or sth.
     }
     unsafe fn wake_func(ptr: *const ()) {
         //SAFETY: we know this void pointer points to some function with desired signature.

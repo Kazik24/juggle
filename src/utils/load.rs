@@ -22,10 +22,18 @@ use pin_project::*;
 ///
 /// # Examples
 /// ```
+/// # extern crate std;
 /// use juggle::*;
-/// use juggle::utils::{LoadBalance, StdTimerClock};
+/// use juggle::utils::*;
+/// use std::time::{Duration, Instant};
 /// # use std::thread::sleep;
-/// # use std::time::{Duration, Instant};
+/// # struct StdTimerClock;
+/// # impl TimerClock for StdTimerClock {
+/// #   type Duration = Duration;
+/// #   type Instant = std::time::Instant;
+/// #   fn start(&self) -> Self::Instant { Self::Instant::now() }
+/// #   fn stop(&self, start: Self::Instant) -> Self::Duration { Self::Instant::now() - start }
+/// # }
 /// # fn do_some_work(){ sleep(Duration::from_millis(1))}
 /// # fn do_more_demanding_work(){ sleep(Duration::from_millis(1))}
 ///
