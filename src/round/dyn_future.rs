@@ -57,6 +57,13 @@ impl<'a> DynamicFuture<'a> {
         if self.polling.replace(true) {
             panic!("Recursive call to DynamicFuture::poll_local is not allowed.");
         }
+        struct Guard<'a>(&'a Cell<bool>);
+        impl Drop for Guard<'_>{
+            //SAFETY: unlock so that poll_local can be called again.
+            fn drop(&mut self) { self.0.set(false); }
+        }
+        let guard = Guard(&self.polling); //SAFETY: construct guard
+
         //store false cause if it became true before this operation then polling can be done
         //if it becomes true after this operation but before poll then this also means that polling can be done
         self.flags.set_runnable(false);
@@ -66,7 +73,7 @@ impl<'a> DynamicFuture<'a> {
             let pin_ref = &mut *self.pinned_future.get();
             pin_ref.as_mut().poll(&mut Context::from_waker(self.flags.waker_ref()))
         };
-        self.polling.set(false);//SAFETY: unlock so that poll_local can be called again.
+        drop(guard); //explicit drop
         result
     }
 }

@@ -1,11 +1,12 @@
 //! This crate provides a way to switch between tasks on single-thread or embedded environments utilizing
 //! [cooperative multitasking](https://en.wikipedia.org/wiki/Cooperative_multitasking).
 //!
-//! It uses async/await mechanisms of Rust, tasks should have manual switching points inside
+//! It uses async/await mechanisms of Rust, tasks should have manual suspension points inside
 //! async functions to allow scheduler to switch tasks (see [`yield_once!()`](macro.yield_once.html)
-//! macro). Tasks can be dynamically created/cancelled/suspended/resumed and can wait for external
-//! waking events (e.g from other threads or interrupts). For more information about scheduler
-//! see [Wheel](struct.Wheel.html).
+//! macro). Tasks can be dynamically
+//! [created](struct.WheelHandle.html#method.spawn)/[cancelled](struct.WheelHandle.html#method.cancel)/[suspended](struct.WheelHandle.html#method.suspend)/[resumed](struct.WheelHandle.html#method.resume)
+//! and can `await` external events (e.g from other threads or interrupts). For more information about scheduler
+//! see [`Wheel`](struct.Wheel.html).
 //!
 //! # Examples
 //! Simple program that reads data from sensor and processes it.

@@ -4,20 +4,21 @@ use alloc::string::{String, ToString};
 use alloc::borrow::Cow;
 use core::fmt::{Debug, Formatter};
 use core::future::Future;
+use core::hash::{Hash, Hasher};
 use core::pin::Pin;
 use crate::round::algorithm::SchedulerAlgorithm;
 use crate::round::dyn_future::{DynamicFuture, TaskName};
 
-/// Handle used to spawn and control tasks in assigned [Wheel](struct.Wheel.html).
+/// Handle used to spawn and control tasks in assigned [`Wheel`](struct.Wheel.html).
 #[derive(Clone)]
 pub struct WheelHandle<'futures> {
     ptr: Weak<SchedulerAlgorithm<'futures>>,
 }
 
-/// Represents identifier of task registered by [WheelHandle](struct.WheelHandle.html).
+/// Represents identifier of task registered by [`WheelHandle`](struct.WheelHandle.html).
 ///
 /// Identifiers are only valid when distinguishing tasks registered inside the same
-/// [Wheel](struct.Wheel.html). Two different wheels can have tasks with the same identifiers.
+/// [`Wheel`](struct.Wheel.html). Two different wheels can have tasks with the same identifiers.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct IdNum(core::num::NonZeroUsize);
 
@@ -80,7 +81,7 @@ impl<'futures> WheelHandle<'futures> {
     /// Checks if this handle is valid.
     ///
     /// This method returns true if specific handle is valid. If handle is valid
-    /// it means that it can be used to control tasks in [Wheel](struct.Wheel.html) associated with
+    /// it means that it can be used to control tasks in [`Wheel`](struct.Wheel.html) associated with
     /// it. Handle is valid until associated wheel is dropped or
     /// [`locked`](struct.Wheel.html#method.lock).
     ///
@@ -96,7 +97,7 @@ impl<'futures> WheelHandle<'futures> {
     /// ```
     pub fn is_valid(&self) -> bool { self.ptr.strong_count() != 0 }
 
-    /// Checks if this and the other handle reference the same [Wheel](struct.Wheel.html).
+    /// Checks if this and the other handle reference the same [`Wheel`](struct.Wheel.html).
     /// # Examples
     /// ```
     /// use juggle::*;
@@ -120,7 +121,7 @@ impl<'futures> WheelHandle<'futures> {
     /// # Arguments
     /// * `future` - The future you want to schedule.
     ///
-    /// Allocates new task inside associated [Wheel](struct.Wheel.html). Returns identifier of newly
+    /// Allocates new task inside associated [`Wheel`](struct.Wheel.html). Returns identifier of newly
     /// allocated task or `None` if this handle is [`invalid`](#method.is_valid).
     pub fn spawn_default<F>(&self, future: F) -> Option<IdNum> where F: Future<Output=()> + 'futures {
         self.spawn_dyn(SpawnParams::default(), Box::pin(future))
@@ -131,10 +132,11 @@ impl<'futures> WheelHandle<'futures> {
     /// * `params` - Task creation parameters. Using default will spawn runnable task without name.
     /// * `future` - The future you want to schedule.
     ///
-    /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
+    /// Allocates new task inside associated [`Wheel`](struct.Wheel.html). You can specify creation
     /// parameters of this task. Returns identifier of newly allocated task or None if this
     /// handle is [`invalid`](#method.is_valid).
-    pub fn spawn<F>(&self, params: impl Into<SpawnParams>, future: F) -> Option<IdNum> where F: Future<Output=()> + 'futures {
+    pub fn spawn<P,F>(&self, params: P, future: F) -> Option<IdNum>
+        where F: Future<Output=()> + 'futures, P: Into<SpawnParams> {
         self.spawn_dyn(params, Box::pin(future))
     }
 
@@ -144,10 +146,11 @@ impl<'futures> WheelHandle<'futures> {
     /// * `params` - Task creation parameters. Using default will spawn runnable task without name.
     /// * `future` - Boxed future you want to schedule.
     ///
-    /// Allocates new task inside associated [Wheel](struct.Wheel.html). You can specify creation
+    /// Allocates new task inside associated [`Wheel`](struct.Wheel.html). You can specify creation
     /// parameters of this task. Returns identifier of newly allocated task or None if this
     /// handle is [`invalid`](#method.is_valid).
-    pub fn spawn_dyn(&self, params: impl Into<SpawnParams>, future: Pin<Box<dyn Future<Output=()> + 'futures>>) -> Option<IdNum> {
+    pub fn spawn_dyn<P>(&self, params: P, future: Pin<Box<dyn Future<Output=()> + 'futures>>) -> Option<IdNum>
+        where P: Into<SpawnParams>{
         unwrap_weak!(self,this,None);
         let params = params.into();
         let dynamic = DynamicFuture::new(future, this.clone_registry(), params.suspended, params.name);
@@ -182,7 +185,7 @@ impl<'futures> WheelHandle<'futures> {
     ///
     /// If this handle is [`invalid`](#method.is_valid) then returns
     /// [`State::Unknown`](enum.State.html#variant.Unknown).
-    /// For more information about allowed states see [State](enum.State.html)
+    /// For more information about allowed states see [`State`](enum.State.html)
     ///
     /// # Examples
     /// ```
@@ -305,6 +308,17 @@ impl<'futures> WheelHandle<'futures> {
 impl<'futures> Debug for WheelHandle<'futures> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         self.fmt_name(f, "WheelHandle")
+    }
+}
+
+impl<'futures> PartialEq for WheelHandle<'futures> {
+    fn eq(&self, other: &Self) -> bool { self.is_same(other) }
+}
+impl<'futures> Eq for WheelHandle<'futures> {}
+
+impl<'futures> Hash for WheelHandle<'futures> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_usize(self.ptr.as_ptr() as usize); // identity hash code
     }
 }
 

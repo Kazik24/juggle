@@ -98,7 +98,7 @@ impl<'future> Registry<'future>{
 
     #[cfg(debug_assertions)]
     #[inline]
-    fn guarded_iterator(&self) -> impl Iterator<Item=(usize, &DynamicFuture<'future>)> {
+    fn guarded_iterator(&self) -> impl Iterator<Item=(TaskKey, &DynamicFuture<'future>)> {
         struct It<'a,T>(T,&'a Cell<usize>);
         impl<T> Drop for It<'_,T>{
             fn drop(&mut self) { self.1.set(self.1.get()-1); }
@@ -117,7 +117,7 @@ impl<'future> Registry<'future>{
     }
 
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item=(usize, &DynamicFuture<'future>)>{
+    pub fn iter(&self) -> impl Iterator<Item=(TaskKey, &DynamicFuture<'future>)>{
         #[cfg(debug_assertions)]
         return self.guarded_iterator();
         #[cfg(not(debug_assertions))]

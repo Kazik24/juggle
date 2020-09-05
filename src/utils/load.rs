@@ -10,7 +10,7 @@ use pin_project::*;
 /// Helper for equally dividing time slots across multiple tasks.
 ///
 /// This struct can be used as a wrapper for tasks to ensure they have more-less equal amount of time
-/// per slot to execute. For more low-level control you can use [TimingGroup](struct.TimingGroup.html).
+/// per slot to execute. For more low-level control you can use [`TimingGroup`](struct.TimingGroup.html).
 ///
 /// Each task has number of time slots assigned to it. Time slots divides time designated for this group
 /// into parts for each task. Some task can therefore have assigned more time than the others, e.g if
@@ -18,7 +18,49 @@ use pin_project::*;
 /// task will be running 1 second from this time and second task - 2 seconds.
 ///
 /// You can specify custom clock for measuring time in this group by implementing
-/// [TimerClock](trait.TimerClock.html) trait and passing it to [with](#method.with) method.
+/// [`TimerClock`](trait.TimerClock.html) trait and passing it to [`with`](#method.with) method.
+///
+/// # Examples
+/// ```
+/// use juggle::*;
+/// use juggle::utils::{LoadBalance, StdTimerClock};
+/// # use std::thread::sleep;
+/// # use std::time::{Duration, Instant};
+/// # fn do_some_work(){ sleep(Duration::from_millis(1))}
+/// # fn do_more_demanding_work(){ sleep(Duration::from_millis(1))}
+///
+/// async fn task_single_time(){
+///     loop{
+///         do_some_work();
+///         yield_once!();
+///     }
+/// }
+/// async fn task_double_time(){
+///     loop{
+///         do_more_demanding_work();
+///         yield_once!();
+///     }
+/// }
+///
+/// let wheel = Wheel::new();
+/// // create group with one task in it
+/// let single = LoadBalance::with(StdTimerClock,1,task_single_time());
+/// // add other task to group with 2 time slots
+/// let double = single.insert(2,task_double_time());
+/// // spawn tasks in Wheel
+/// let ids = wheel.handle().spawn(SpawnParams::default(),single).unwrap();
+/// let idd = wheel.handle().spawn(SpawnParams::default(),double).unwrap();
+/// // add control to cancel tasks after 1 second.
+/// let handle = wheel.handle().clone();
+/// wheel.handle().spawn(SpawnParams::default(),async move {
+///     let start = Instant::now();
+///     yield_while!(start.elapsed() < Duration::from_millis(1000));
+///     handle.cancel(ids);
+///     handle.cancel(idd);
+/// }).unwrap();
+/// //run scheduler
+/// smol::block_on(wheel).unwrap();
+/// ```
 #[pin_project]
 pub struct LoadBalance<F: Future, C: TimerClock> {
     record: Registered<C>,
@@ -54,8 +96,7 @@ impl<C: TimerClock> Drop for Registered<C> {
 impl<F: Future, C: TimerClock> LoadBalance<F, C> {
     /// Create new load balancing group with one future in it. Assigns specific
     /// number of time slots to future and clock used as measuring time source for this group.
-    /// For usage with `std` library feature, you can use [StdTimerClock](struct.StdTimerClock.html)
-    /// as measuring time source.
+    /// For usage with `std` library feature, you can use [`StdTimerClock`](struct.StdTimerClock.html).
     pub fn with(clock: C, prop: u16, future: F) -> Self {
         let mut group = TimingGroup::new();
         let key = group.insert(prop);
@@ -68,7 +109,7 @@ impl<F: Future, C: TimerClock> LoadBalance<F, C> {
         }
     }
     /// Insert future to this load balancing group with given number of time slots assigned. Returned wrapper
-    /// also belongs to the same group as this wrapper.
+    /// also belongs to the same group.
     pub fn insert<G>(&self, prop: u16, future: G) -> LoadBalance<G, C> where G: Future {
         let index = self.record.group.0.borrow_mut().insert(prop);
         LoadBalance {

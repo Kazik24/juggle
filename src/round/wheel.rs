@@ -41,7 +41,7 @@ use super::handle::*;
 ///
 /// # Managing tasks
 /// You can spawn/suspend/resume/cancel any task as long as you have it's key, and handle to this
-/// scheduler. Handle can be obtained from this object using method [`handle(&self)`](#method.handle),
+/// scheduler. Handle can be obtained from this object using method [`handle`](#method.handle),
 /// and task keys are returned from functions that spawn tasks
 /// (e.g [`spawn`](struct.WheelHandle.html#method.spawn))
 ///
@@ -100,7 +100,7 @@ pub struct Wheel<'futures> {
     handle: WheelHandle<'futures>,
 }
 
-/// Same as [Wheel](struct.Wheel.html) except that it has fixed content and there is no way to
+/// Same as [`Wheel`](struct.Wheel.html) except that it has fixed content and there is no way to
 /// control state of tasks within it.
 pub struct LockedWheel<'futures> {
     alg: SchedulerAlgorithm<'futures>,
@@ -126,17 +126,17 @@ impl<'futures> Wheel<'futures> {
     /// Obtain reference to handle that is used to spawn/control tasks.
     ///
     /// Handle can be cloned inside this thread which is ensured because
-    /// [WheelHandle](struct.WheelHandle.html) is not Send and not Sync.
+    /// [`WheelHandle`](struct.WheelHandle.html) is not Send and not Sync.
     pub fn handle(&self) -> &WheelHandle<'futures> { &self.handle }
 
     /// Lock this wheel preventing all handles from affecting the tasks.
     ///
-    /// Transforms this instance into [LockedWheel](struct.LockedWheel.html) which is similar to
-    /// [Wheel](struct.Wheel.html) but has no way of controlling tasks within it.
+    /// Transforms this instance into [`LockedWheel`](struct.LockedWheel.html) which is similar to
+    /// [`Wheel`](struct.Wheel.html) but has no way of controlling tasks within it.
     ///
     /// # Panics
     /// Panics if this method was called inside handle's method such as
-    /// [with_name](struct.WheelHandle.html#method.with_name).
+    /// [`with_name`](struct.WheelHandle.html#method.with_name).
     pub fn lock(self) -> LockedWheel<'futures> {
         // rc has always strong count of 1 (it can have strong count > 1 during calls
         // on handle, but if these calls return then it will be back to 1)
@@ -148,7 +148,7 @@ impl<'futures> Wheel<'futures> {
 impl<'futures> LockedWheel<'futures> {
     /// Unlock this wheel so that a handle can be obtained and used to spawn or control tasks.
     ///
-    /// Transforms this instance back to [Wheel](struct.Wheel.html)
+    /// Transforms this instance back to [`Wheel`](struct.Wheel.html)
     /// Note that if handles that were invalidated after this wheel was locked will not be valid
     /// again after calling this method, new [`handle`](struct.Wheel.html#method.handle) should be obtained.
     pub fn unlock(self) -> Wheel<'futures> {
@@ -186,11 +186,11 @@ impl<'futures> Future for LockedWheel<'futures> {
 
 /// Error returned by scheduler when all tasks become suspended.
 ///
-/// [Wheel](struct.Wheel.html)/[LockedWheel](struct.LockedWheel.html) can only operate within single
+/// [`Wheel`](struct.Wheel.html)/[`LockedWheel`](struct.LockedWheel.html) can only operate within single
 /// thread so if all tasks in it become suspended, then it cannot continue execution because there
 /// is no way to resume any task. When such situation occurs, this error is returned by scheduler
 /// `Future`.
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct SuspendError;
 
 impl Display for SuspendError {

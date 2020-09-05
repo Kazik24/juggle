@@ -3,7 +3,7 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use pin_project::pin_project;
 
-/// Helper struct for task dealing with task switching.
+/// Helper struct for dealing with task switching.
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct Yield(bool);
 

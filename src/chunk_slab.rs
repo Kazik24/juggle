@@ -161,7 +161,7 @@ macro_rules! impl_key {
         $(impl ChunkSlabKey for $typename {
             fn into_index(self) -> usize { self as usize }
             fn from_index(idx: usize) -> Self { idx as Self }
-            fn max_value()->usize{ Self::max_value() as usize }
+            fn max_value()->usize{ Self::MAX as usize }
             fn zero()->Self{ 0 }
             fn add_one(self)->Self{ self + 1 }
         })*
