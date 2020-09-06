@@ -16,10 +16,12 @@ use core::task::{RawWaker, RawWakerVTable, Waker};
 mod cell;
 mod load;
 mod timing;
+mod chunk_slab;
 
 pub use cell::AtomicCell;
 pub use load::LoadBalance;
 pub use timing::{TimerClock, TimerCount, TimingGroup};
+pub(crate) use chunk_slab::ChunkSlab;
 #[cfg(feature = "std")]
 pub use timing::StdTimerClock;
 

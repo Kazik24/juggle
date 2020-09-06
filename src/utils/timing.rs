@@ -3,7 +3,7 @@ use core::fmt::{Debug, Formatter};
 use core::num::NonZeroU16;
 use core::ops::{Add, Div, Mul, Sub};
 use core::time::Duration;
-use crate::chunk_slab::ChunkSlab;
+use crate::utils::ChunkSlab;
 
 /// Custom time source. Implement this trait if you want to provide your own time source for
 /// [`LoadBalance`](struct.LoadBalance.html) group.

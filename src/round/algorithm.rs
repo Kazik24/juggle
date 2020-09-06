@@ -277,7 +277,7 @@ impl Control<'_> {
                 //check once again if no task was woken during this time
                 if !Self::drain_runnable(&self.registry, deferred, from) {
                     //waiting begins
-                    return Rotate::Wait;//true means that future should wait for waker
+                    return Rotate::Wait;//means that future should wait for waker
                 }
                 //if any was woken then try to deregister waker, then make one rotation
                 self.last_waker.clear();
@@ -317,9 +317,9 @@ impl Control<'_> {
 
             self.current.set(Some(run_key));
             let guard = Guard(&self.current);
-            // be careful with interior mutability types here cause poll_local can invoke any method
-            // on handle, therefore 'from' queue shouldn't be edited by handles (other structures
-            // are pretty much ok)
+            // be careful with interior mutability types here cause 'poll_local' can invoke any method
+            // on handle, 'from' queue shouldn't be edited by handles (this is not enforced) and
+            // registry is now in borrowed state so nothing can be 'remove'd from it.
             let result = run_task.poll_local().is_pending(); //run user code
             drop(guard);
 

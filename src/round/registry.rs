@@ -1,4 +1,4 @@
-use crate::chunk_slab::ChunkSlab;
+use crate::utils::ChunkSlab;
 use crate::round::algorithm::TaskKey;
 use crate::round::dyn_future::DynamicFuture;
 use core::cell::*;
