@@ -162,6 +162,7 @@ impl<T: Debug> Debug for AtomicCell<T> {
 
 #[cfg(test)]
 mod test {
+    extern crate std;
     use std::collections::hash_map::DefaultHasher;
     use std::collections::HashSet;
     use std::hash::{Hash, Hasher};

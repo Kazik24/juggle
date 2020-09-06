@@ -174,6 +174,7 @@ impl_key!(u8,u16,u32,usize);
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use alloc::string::String;
     use core::fmt::*;
     use super::*;
