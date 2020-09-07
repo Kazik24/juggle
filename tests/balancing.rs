@@ -59,7 +59,7 @@ fn load_balance_tasks(total: u64, presets: &[(u16, fn(usize) -> u64)]) -> Vec<u6
         }
         let last = handle.spawn(SpawnParams::default(), group);
         ids.insert(0, last.unwrap());
-        handle.spawn(SpawnParams::default(), control_task(handle.clone(), ids, total));
+        handle.spawn(SpawnParams::default(), control_task(handle.clone(), ids, total)).unwrap();
 
         smol::block_on(wheel).unwrap();
     }

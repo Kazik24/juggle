@@ -47,7 +47,7 @@ fn load_balance_tasks(total: u64, presets: &[(u16, Box<dyn Fn(usize) -> u64>)]) 
         }
         let last = handle.spawn(SpawnParams::default(), group);
         ids.insert(0, last.unwrap());
-        handle.spawn(SpawnParams::default(), control_task(handle.clone(), ids, clock, total));
+        handle.spawn(SpawnParams::default(), control_task(handle.clone(), ids, clock, total)).unwrap();
 
         smol::block_on(wheel).unwrap();
     }

@@ -56,10 +56,11 @@ fn test_suspend() {
         assert_eq!(handle.get_state(id2), State::Runnable);
         panic1.set(false);
 
+        let rand = &mut StdRng::seed_from_u64(1234);
         //spam resume/suspend on tasks
         for _ in 0..300 {
-            for _ in 0..rand::thread_rng().gen_range(5, 150) {
-                match rand::thread_rng().gen_range(0, 4) {
+            for _ in 0..rand.gen_range(5, 150) {
+                match rand.gen_range(0, 4) {
                     0 => {
                         handle.suspend(id1);
                         panic1.set(true);
@@ -78,7 +79,7 @@ fn test_suspend() {
                     }
                 }
             }
-            if rand::thread_rng().gen_bool(0.3) {
+            if rand.gen_bool(0.3) {
                 yield_once!();
             }
         }
@@ -140,7 +141,7 @@ fn test_suspend_error() {
         assert_flags[0].set(true);
         yield_once!();
         unreachable!();
-    });
+    }).unwrap();
     assert_flags[2].set(true);
     // all tasks should eventually be suspended and error should be raised cause it's not possible
     // to change state of any task because wheel can be controlled ony inside this thread.

@@ -7,7 +7,7 @@ use crate::utils::{TimerClock, TimingGroup};
 use crate::round::Ucw;
 use pin_project::*;
 
-/// Helper for equally dividing time slots across multiple tasks.
+/// Helper for equally dividing time slots across multiple tasks. Implements `Future`.
 ///
 /// This struct can be used as a wrapper for tasks to ensure they have more-less equal amount of time
 /// per slot to execute. For more low-level control you can use [`TimingGroup`](struct.TimingGroup.html).
@@ -78,7 +78,7 @@ pub struct LoadBalance<F: Future, C: TimerClock> {
 
 struct Registered<C: TimerClock> {
     index: usize,
-    group: Rc<(Ucw<TimingGroup<C::Duration>>, C)>,
+    group: Rc<(Ucw<TimingGroup<C::Duration>>, C)>, //only struct with drop (see: unregister_and_get)
 }
 
 impl<C: TimerClock> Registered<C> {
@@ -88,8 +88,8 @@ impl<C: TimerClock> Registered<C> {
         //SAFETY: we just run destructor code, now perform moving value out, and suppress
         //real destructor.
         unsafe {
-            let rc = core::ptr::read(&self.group as *const _);//take by force!
-            core::mem::forget(self); //you'd better not drop it!
+            let rc = core::ptr::read(&self.group as *const _);//take by force! (only dropable struct)
+            core::mem::forget(self); //you'd better not drop it! (if not this line, we would have double drop)
             rc
         }
     }

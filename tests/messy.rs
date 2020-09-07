@@ -7,6 +7,7 @@ use rand::prelude::StdRng;
 use rand::*;
 use std::rc::Rc;
 use rand::seq::SliceRandom;
+use std::future::Future;
 
 
 fn generate_arbitrary_waits(handle: &WheelHandle<'_>,batch: usize,max_wait: usize,max_rep: usize,count: usize,rand: &mut StdRng){
@@ -60,4 +61,86 @@ fn test_arbitrary_waits(){
         smol::block_on(wheel).unwrap();
     }
 
+}
+
+fn timeout_wheel<'a,F,T>(loops: usize,func: F) where F: FnOnce(WheelHandle<'a>)->T + 'a, T: Future<Output=()> + 'a{
+    let wheel = Wheel::new();
+    let handle = wheel.handle().clone();
+    wheel.handle().spawn_default(async move {
+        Yield::times(loops).await;
+        yield_once!();
+        if handle.registered_count() > 1 { //this task is not alone
+            unreachable!("Test timed out after {} yields",loops); //bomb
+        }
+    }).unwrap();
+    let handle = wheel.handle().clone();
+    wheel.handle().spawn_default(func(handle)).unwrap();
+    smol::block_on(wheel).unwrap();
+}
+
+#[test]
+#[should_panic]
+fn test_timeout_works(){
+    timeout_wheel(100,|_| async move {
+        Yield::times(101).await;
+    });
+}
+
+#[test]
+fn test_cancel_waiting(){
+    timeout_wheel(100,|handle| async move {
+        let id = handle.spawn_default(Signal::new()).unwrap();
+        Yield::times(2).await;
+        assert_eq!(handle.get_state(id),State::Waiting);
+        assert!(handle.cancel(id));
+        assert_eq!(handle.get_state(id),State::Cancelled);
+        yield_once!();
+        assert_eq!(handle.get_state(id),State::Unknown);
+    });
+}
+
+#[test]
+fn test_cancel_suspended(){
+    timeout_wheel(100,|handle| async move {
+        let id = handle.spawn(SpawnParams::suspended(true),async{}).unwrap();
+        assert_eq!(handle.get_state(id),State::Suspended);
+        assert!(handle.cancel(id));
+        assert_eq!(handle.get_state(id),State::Cancelled);
+        yield_once!();
+        assert_eq!(handle.get_state(id),State::Unknown);
+    });
+}
+
+#[test]
+fn test_cancel_suspended_delay(){
+    timeout_wheel(100,|handle| async move {
+        let id = handle.spawn(SpawnParams::suspended(true),async{}).unwrap();
+        assert_eq!(handle.get_state(id),State::Suspended);
+        Yield::times(10).await;
+        assert_eq!(handle.get_state(id),State::Suspended);
+        assert!(handle.cancel(id));
+        assert_eq!(handle.get_state(id),State::Cancelled);
+        yield_once!();
+        assert_eq!(handle.get_state(id),State::Unknown);
+    });
+}
+
+#[test]
+fn test_suspend_while_wait(){
+    timeout_wheel(100,|handle| async move {
+        let signal = Signal::new();
+        let id = handle.spawn_default(signal.clone()).unwrap();
+        yield_once!();
+        assert_eq!(handle.get_state(id),State::Waiting);
+        assert!(handle.suspend(id));
+        assert_eq!(handle.get_state(id),State::Suspended);
+        Yield::times(10).await;
+        assert_eq!(handle.get_state(id),State::Suspended);
+        assert!(handle.resume(id));
+        assert_eq!(handle.get_state(id),State::Waiting);
+        signal.signal(true);
+        assert_eq!(handle.get_state(id),State::Runnable);
+        Yield::times(2).await;
+        assert_eq!(handle.get_state(id),State::Unknown);
+    });
 }

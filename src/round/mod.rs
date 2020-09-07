@@ -35,17 +35,21 @@ pub(crate) struct UcwRefMut<'a,T>{
 }
 impl<T> Deref for UcwRef<'_,T>{
     type Target = T;
+    #[inline(always)]
     fn deref(&self) -> &Self::Target { self.inner.deref() }
 }
 impl<T> Deref for UcwRefMut<'_,T>{
     type Target = T;
+    #[inline(always)]
     fn deref(&self) -> &Self::Target { self.inner.deref() }
 }
 impl<T> DerefMut for UcwRefMut<'_,T>{
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target { self.inner.deref_mut() }
 }
 
 impl<T> Ucw<T>{
+    #[inline(always)]
     pub(crate) fn new(value: T)->Self{
         Self{
             #[cfg(debug_assertions)]
@@ -54,6 +58,7 @@ impl<T> Ucw<T>{
             inner: UnsafeCell::new(value),
         }
     }
+    #[inline(always)]
     pub(crate) fn borrow(&self)->UcwRef<'_,T>{
         UcwRef{
             #[cfg(debug_assertions)]
@@ -62,6 +67,7 @@ impl<T> Ucw<T>{
             inner: unsafe{ &*self.inner.get() },
         }
     }
+    #[inline(always)]
     pub(crate) fn borrow_mut(&self)->UcwRefMut<'_,T>{
         UcwRefMut{
             #[cfg(debug_assertions)]

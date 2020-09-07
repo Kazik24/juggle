@@ -9,7 +9,8 @@ use core::pin::Pin;
 use crate::round::algorithm::SchedulerAlgorithm;
 use crate::round::dyn_future::{DynamicFuture, TaskName};
 
-/// Handle used to spawn and control tasks in assigned [`Wheel`](struct.Wheel.html).
+/// Handle used to spawn and control tasks in assigned [`Wheel`](struct.Wheel.html). All tasks
+/// manipulation are done by this struct.
 #[derive(Clone)]
 pub struct WheelHandle<'futures> {
     ptr: Weak<SchedulerAlgorithm<'futures>>,
@@ -65,12 +66,11 @@ pub enum State {
 }
 
 macro_rules! unwrap_weak {
-    ($s:expr,$this:ident,$ret:expr) => {
-        let rc = match $s.ptr.upgrade() {
+    ($s:expr,$ret:expr) => {
+        match $s.ptr.upgrade() {
             Some(v) => v,
             None => return $ret,
-        };
-        let $this = rc;
+        }
     }
 }
 
@@ -151,7 +151,7 @@ impl<'futures> WheelHandle<'futures> {
     /// handle is [`invalid`](#method.is_valid).
     pub fn spawn_dyn<P>(&self, params: P, future: Pin<Box<dyn Future<Output=()> + 'futures>>) -> Option<IdNum>
         where P: Into<SpawnParams>{
-        unwrap_weak!(self,this,None);
+        let this = unwrap_weak!(self,None);
         let params = params.into();
         let dynamic = DynamicFuture::new(future, this.clone_registry(), params.suspended, params.name);
         Some(IdNum::from_usize(this.register(dynamic) as usize))
@@ -159,33 +159,37 @@ impl<'futures> WheelHandle<'futures> {
 
     /// Cancel task with given id.
     ///
-    /// If task is already executing then it will be removed when next yield occurs. Note that when
+    /// If task is already executing then it will become cancelled when next yield occurs. Note that when
     /// getting [state](#method.get_state) of this cancelled task it might be `Cancelled` for some time
     /// but eventually it will become `Unknown` because scheduler removes tasks only after circling
     /// through all runnable tasks. Then when new task is spawned it might be assigned to the same id.
     pub fn cancel(&self, id: IdNum) -> bool {
-        unwrap_weak!(self,this,false);
+        let this = unwrap_weak!(self,false);
         this.cancel(id.to_usize())
     }
     /// Suspend task with given id.
     ///
-    /// Suspended tasks cannot execute until resumed.
+    /// Suspended tasks cannot execute until resumed. After this operation the task will change
+    /// state to `Suspended`. Returns true if task was suspended and false if it was already
+    /// suspended, or if id or handle is invalid.
     pub fn suspend(&self, id: IdNum) -> bool {
-        unwrap_weak!(self,this,false);
+        let this = unwrap_weak!(self,false);
         this.suspend(id.to_usize())
     }
     /// Resume task with given id.
     ///
-    /// Makes this task `Runnable` again.
+    /// After this operation given task can be executed again. It will change state to `Runnable`
+    /// or `Waiting` in case it still waits for some external event. Returns true if task was
+    /// resumed, and false if it wasn't suspended, or if id or handle is invalid.
     pub fn resume(&self, id: IdNum) -> bool {
-        unwrap_weak!(self,this,false);
+        let this = unwrap_weak!(self,false);
         this.resume(id.to_usize())
     }
     /// Get state of task with given id.
     ///
     /// If this handle is [`invalid`](#method.is_valid) then returns
     /// [`State::Unknown`](enum.State.html#variant.Unknown).
-    /// For more information about allowed states see [`State`](enum.State.html)
+    /// For more information about allowed states see [`State`](enum.State.html).
     ///
     /// # Examples
     /// ```
@@ -199,7 +203,7 @@ impl<'futures> WheelHandle<'futures> {
     /// assert_eq!(wheel.handle().get_state(id2),State::Suspended);
     /// ```
     pub fn get_state(&self, id: IdNum) -> State {
-        unwrap_weak!(self,this,State::Unknown);
+        let this = unwrap_weak!(self,State::Unknown);
         this.get_state(id.to_usize())
     }
     /// Get id of currently executing task.
@@ -226,7 +230,7 @@ impl<'futures> WheelHandle<'futures> {
     /// smol::block_on(wheel).unwrap();
     /// ```
     pub fn current(&self) -> Option<IdNum> {
-        unwrap_weak!(self,this,None);
+        let this = unwrap_weak!(self,None);
         this.get_current().map(|t| IdNum::from_usize(t))
     }
 
@@ -252,7 +256,7 @@ impl<'futures> WheelHandle<'futures> {
     /// ```
     ///
     pub fn with_name<F, T>(&self, id: IdNum, func: F) -> T where F: FnOnce(Option<&str>) -> T {
-        unwrap_weak!(self,this,func(None));
+        let this = unwrap_weak!(self,func(None));
         this.with_name(id.to_usize(),move |name|func(name.as_str()))
     }
     /// Returns name of current task as new String.
@@ -280,7 +284,7 @@ impl<'futures> WheelHandle<'futures> {
     /// with fresh allocated `String` of that name. If you don't want to allocate temporary memory
     /// for string use in such case, use [`with_name`](#method.with_name).
     pub fn get_name(&self, id: IdNum) -> Option<Cow<'static,str>> {
-        unwrap_weak!(self,this,None);
+        let this = unwrap_weak!(self,None);
         this.with_name(id.to_usize(),move |name|{
             match name {
                 TaskName::Static(s) => Some(Cow::<'static,str>::Borrowed(s)),
@@ -295,12 +299,19 @@ impl<'futures> WheelHandle<'futures> {
     /// * Task was not found.
     /// * Handle is [`invalid`](#method.is_valid).
     pub fn get_by_name(&self, name: &str) -> Option<IdNum> {
-        unwrap_weak!(self,this,None);
+        let this = unwrap_weak!(self,None);
         this.get_by_name(name).map(|k| IdNum::from_usize(k))
     }
 
+    /// Returns number of total registered tasks in this scheduler at the moment or 0 if this handle
+    /// is [`invalid`](#method.is_valid).
+    pub fn registered_count(&self)->usize{
+        let this = unwrap_weak!(self,0);
+        this.registered_count()
+    }
+
     fn fmt_name(&self, f: &mut Formatter<'_>, name: &str) -> core::fmt::Result {
-        unwrap_weak!(self,this,write!(f,"{}{{ Invalid }}",name));
+        let this = unwrap_weak!(self,write!(f,"{}{{ Invalid }}",name));
         this.format_internal(f, name)
     }
 }

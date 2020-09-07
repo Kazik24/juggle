@@ -7,10 +7,10 @@ use core::task::*;
 use crate::round::algorithm::SchedulerAlgorithm;
 use super::handle::*;
 
-/// Single-thread async task scheduler with dynamic task state control.
+/// Single-thread async task scheduler with dynamic task state control. Implements `Future`.
 ///
 /// This structure is useful when you want to divide single thread to share processing power among
-/// multiple task using [cooperative multitasking](https://en.wikipedia.org/wiki/Cooperative_multitasking).
+/// multiple task by [cooperative multitasking](https://en.wikipedia.org/wiki/Cooperative_multitasking).
 ///
 /// Tasks are scheduled using round-robin algorithm without priority. Diagram below shows simplified
 /// scheduling process.
@@ -40,11 +40,20 @@ use super::handle::*;
 /// might not happen immedialty after task is woken.
 ///
 /// # Managing tasks
-/// You can spawn/suspend/resume/cancel any task as long as you have it's key, and handle to this
-/// scheduler. Handle can be obtained from this object using method [`handle`](#method.handle),
-/// and task keys are returned from functions that spawn tasks
-/// (e.g [`spawn`](struct.WheelHandle.html#method.spawn))
+/// You can [spawn]/[suspend]/[resume]/[cancel] any task as long as you have it's [identifier], and
+/// [handle](struct.WheelHandle.html) to this scheduler. Handle can be obtained from this
+/// object using [that method](#method.handle), and task identifiers are returned from
+/// functions that spawn tasks (e.g [`spawn`](struct.WheelHandle.html#method.spawn)).
 ///
+/// Be carefull tho with suspending tasks, if all become suspended then because of scheduler
+/// single-thread nature there is no way of resuming any. Such condition triggers
+/// [`SuspendError`](struct.SuspendError.html) that is returned from future.
+///
+/// [spawn]: struct.WheelHandle.html#method.spawn
+/// [cancel]: struct.WheelHandle.html#method.cancel
+/// [suspend]: struct.WheelHandle.html#method.suspend
+/// [resume]: struct.WheelHandle.html#method.resume
+/// [identifier]: struct.IdNum.html
 /// # Examples
 /// ```
 /// # extern crate alloc;
@@ -101,7 +110,7 @@ pub struct Wheel<'futures> {
 }
 
 /// Same as [`Wheel`](struct.Wheel.html) except that it has fixed content and there is no way to
-/// control state of tasks within it.
+/// control state of tasks within it. Implements `Future`.
 pub struct LockedWheel<'futures> {
     alg: SchedulerAlgorithm<'futures>,
 }
@@ -112,11 +121,6 @@ impl<'futures> Wheel<'futures> {
         Self::from_inner(SchedulerAlgorithm::new())
     }
 
-    /// Create new instance that can contain at least `capacity` number of tasks without
-    /// reallocating internal buffers. Allocation might happen anyway when spawning tasks.
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self::from_inner(SchedulerAlgorithm::with_capacity(capacity))
-    }
     fn from_inner(alg: SchedulerAlgorithm<'futures>) -> Self {
         let ptr = Rc::new(alg);
         let handle = WheelHandle::new(Rc::downgrade(&ptr));
@@ -184,7 +188,7 @@ impl<'futures> Future for LockedWheel<'futures> {
 }
 
 
-/// Error returned by scheduler when all tasks become suspended.
+/// Error returned by scheduler's `Future` when all tasks become suspended.
 ///
 /// [`Wheel`](struct.Wheel.html)/[`LockedWheel`](struct.LockedWheel.html) can only operate within single
 /// thread so if all tasks in it become suspended, then it cannot continue execution because there

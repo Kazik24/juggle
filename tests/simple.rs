@@ -19,9 +19,9 @@ async fn test_task(handle: WheelHandle<'_>) {
     yield_once!();
     println!("Task [{}] point 1", handle.get_current_name().as_deref().unwrap_or(""));
     if handle.get_current_name().as_deref() == Some("T1") {
-        handle.spawn(SpawnParams::named("WT10"), waiting_task(handle.clone()));
-        handle.spawn(SpawnParams::named("WT11"), waiting_task(handle.clone()));
-        handle.spawn(SpawnParams::named("WT12"), waiting_task(handle.clone()));
+        handle.spawn(SpawnParams::named("WT10"), waiting_task(handle.clone())).unwrap();
+        handle.spawn(SpawnParams::named("WT11"), waiting_task(handle.clone())).unwrap();
+        handle.spawn(SpawnParams::named("WT12"), waiting_task(handle.clone())).unwrap();
     }
     println!("Handle: {:#?}", &handle);
     yield_once!();
@@ -36,10 +36,10 @@ async fn test_task(handle: WheelHandle<'_>) {
 pub fn test_round_robin() {
     let sch = Wheel::new();
     let handle = sch.handle().clone();
-    handle.spawn("T1", test_task(handle.clone()));
-    handle.spawn("T2", test_task(handle.clone()));
-    handle.spawn("T3", test_task(handle.clone()));
-    handle.spawn("T4", test_task(handle.clone()));
+    handle.spawn("T1", test_task(handle.clone())).unwrap();
+    handle.spawn("T2", test_task(handle.clone())).unwrap();
+    handle.spawn("T3", test_task(handle.clone())).unwrap();
+    handle.spawn("T4", test_task(handle.clone())).unwrap();
     println!("Valid: {}", handle.is_valid());
 
     smol::run(sch).unwrap();

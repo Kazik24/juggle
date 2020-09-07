@@ -26,6 +26,7 @@ struct Control<'futures> {
     current: Cell<Option<TaskKey>>,
     suspended_count: Cell<usize>,
     deferred: Ucw<Vec<TaskKey>>,
+    scan_registry: Cell<bool>,
 }
 
 #[repr(u8)]
@@ -43,19 +44,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
                 deferred: Ucw::new(Vec::new()),
                 suspended_count: Cell::new(0),
                 current: Cell::new(None),
-            },
-        }
-    }
-    pub(crate) fn with_capacity(cap: usize) -> Self {
-        Self {
-            runnable: (Ucw::new(VecDeque::with_capacity(cap)), Ucw::new(VecDeque::with_capacity(cap))),
-            which_buffer: Cell::new(false),
-            ctrl: Control {
-                registry: Registry::with_capacity(cap),
-                last_waker: Arc::new(AtomicWakerRegistry::empty()),
-                deferred: Ucw::new(Vec::with_capacity(cap)),
-                suspended_count: Cell::new(0),
-                current: Cell::new(None),
+                scan_registry: Cell::new(false),
             },
         }
     }
@@ -86,7 +75,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
     //safe to call from inside task
     pub(crate) fn resume(&self, key: TaskKey) -> bool {
         match self.ctrl.registry.get(key) {
-            Some(task) if task.is_suspended() => {
+            Some(task) if task.is_suspended() && !task.is_cancelled() => {
                 task.set_suspended(false);
                 self.ctrl.dec_suspended();
 
@@ -110,7 +99,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
     //if rotate_once encounters suspended task, then it will be removed from queue
     pub(crate) fn suspend(&self, key: TaskKey) -> bool {
         match self.ctrl.registry.get(key) {
-            Some(task) if !task.is_suspended() => {
+            Some(task) if !task.is_suspended() && !task.is_cancelled() => {
                 task.set_suspended(true);
                 self.ctrl.inc_suspended();
                 //optimistic check, if is runnable then for sure will be removed from deferred
@@ -148,6 +137,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
                 if task.is_suspended() {
                     task.set_suspended(false);
                     self.ctrl.dec_suspended();
+                    self.ctrl.scan_registry.set(true);
                 }
                 true
             }
@@ -163,6 +153,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
         }
         None
     }
+    pub(crate) fn registered_count(&self)->usize{ self.ctrl.registry.count() }
 
     pub fn with_name<F, T>(&self, id: TaskKey, func: F) -> T where F: FnOnce(&TaskName) -> T {
         match self.ctrl.registry.get(id) {
@@ -320,19 +311,27 @@ impl Control<'_> {
             // be careful with interior mutability types here cause 'poll_local' can invoke any method
             // on handle, 'from' queue shouldn't be edited by handles (this is not enforced) and
             // registry is now in borrowed state so nothing can be 'remove'd from it.
-            let result = run_task.poll_local().is_pending(); //run user code
+            let is_ready = run_task.poll_local().is_ready(); //run user code
             drop(guard);
 
-            if result { //reconsider enqueuing this future again
+            if is_ready || run_task.is_cancelled() { //task was finished or cancelled, remove from scheduler
+                drop(run_task); //must be dropped!
+                self.registry.remove(run_key).expect("Internal Error: task not found.");
+            } else if !run_task.is_suspended() { //reconsider enqueuing this future again
                 if run_task.is_runnable() { //if immediately became runnable then enqueue it
                     to.borrow_mut().push_back(run_key);
                 } else { //put it on deferred queue
                     self.deferred.borrow_mut().push(run_key);
                 }
-            } else { //task was finished, remove from scheduler
-                drop(run_task); //must be dropped!
-                self.registry.remove(run_key).expect("Internal Error: task not found.");
             }
+        }
+        if self.scan_registry.replace(false) { //clear scan flag and perform scan
+            //todo make this more efficient
+            //from queue is now empty
+            //but to queue must be checked if it contains any cancelled tasks
+            to.borrow_mut().retain(|&key| !self.registry.get(key).unwrap().is_cancelled());
+            //not registry can be cleared
+            self.registry.retain(|_,v| !v.is_cancelled());
         }
     }
 
@@ -341,6 +340,12 @@ impl Control<'_> {
         let prev = from.len();
         from.retain(|&elem| {
             let task = registry.get(elem).unwrap();
+            if task.is_suspended() { return false; }
+            if task.is_cancelled() {
+                drop(task);
+                registry.remove(elem).expect("Internal Error: task not found.");
+                return false;
+            }
             if task.is_runnable() {
                 to.push_back(elem);
                 return false;

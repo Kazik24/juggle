@@ -3,6 +3,7 @@ use crate::round::algorithm::TaskKey;
 use crate::round::dyn_future::DynamicFuture;
 use core::cell::*;
 use core::ops::Deref;
+use alloc::vec::Vec;
 
 /// ChunkSlab wrapper with interior mutability.
 /// SAFETY: Intended only to use inside this crate.
@@ -24,7 +25,7 @@ pub(crate) struct TaskRef<'a,'future>{
 
 impl<'future> Deref for TaskRef<'_,'future>{
     type Target = DynamicFuture<'future>;
-    #[inline] fn deref(&self) -> &Self::Target { self.inner }
+    #[inline(always)] fn deref(&self) -> &Self::Target { self.inner }
 }
 
 #[cfg(debug_assertions)]
@@ -41,16 +42,6 @@ impl<'future> Registry<'future>{
     pub fn new()->Self{
         Self{
             slab: UnsafeCell::new(ChunkSlab::new()),
-            #[cfg(debug_assertions)]
-            borrow_flag: Cell::new(0),
-            #[cfg(debug_assertions)]
-            iterate_flag: Cell::new(0),
-        }
-    }
-    #[inline]
-    pub fn with_capacity(cap: usize)->Self{
-        Self{
-            slab: UnsafeCell::new(ChunkSlab::with_capacity(cap)),
             #[cfg(debug_assertions)]
             borrow_flag: Cell::new(0),
             #[cfg(debug_assertions)]
@@ -95,6 +86,12 @@ impl<'future> Registry<'future>{
         //SAFETY: we just checked if anything is borrowed
         unsafe{ (&mut *self.slab.get()).remove(key) }
     }
+    #[inline]
+    pub fn count(&self)->usize{
+        //SAFETY: this is always safe cause iterators and borrows cannot resize slab and resizing
+        //operations such as insert or remove are not recursive.
+        unsafe{ (&mut *self.slab.get()).len() }
+    }
 
     #[cfg(debug_assertions)]
     #[inline]
@@ -122,5 +119,41 @@ impl<'future> Registry<'future>{
         return self.guarded_iterator();
         #[cfg(not(debug_assertions))]
         return unsafe{ (&*self.slab.get()).iter() };
+    }
+
+    #[cfg(debug_assertions)]
+    fn guard_retain<'b>(&'b self)->impl Drop + 'b{
+        if self.borrow_flag.get() != 0 || self.iterate_flag.get() != 0 {
+            panic!("Registry: Cannot remove task that might be borrowed.");
+        }
+        struct Guard<'a>(&'a Cell<usize>, &'a Cell<usize>);
+        impl Drop for Guard<'_>{
+            fn drop(&mut self) {
+                self.0.set(self.0.get() - 1); //decrement both flags
+                self.1.set(self.1.get() - 1);
+            }
+        }
+
+        self.borrow_flag.set(self.borrow_flag.get() + 1); //increment both flags before returning guard
+        self.iterate_flag.set(self.iterate_flag.get() + 1);
+        Guard(&self.borrow_flag,&self.iterate_flag)
+    }
+    pub fn retain(&self,mut func: impl FnMut(TaskKey,&DynamicFuture<'future>)->bool){
+        #[cfg(debug_assertions)]
+        let _guard = self.guard_retain();
+
+        //SAFETY: we check for borrow and iteration in 'guard_retain' and create guard that
+        //decrements flags on drop so if 'func' panics, flags are restored.
+        let slab = unsafe{ &mut *self.slab.get() };
+        //todo find better way than allocating vec for ids
+        let mut vec = Vec::new();
+        for (k,v) in slab.iter() {
+            if !func(k,v) {
+                vec.push(k);
+            }
+        }
+        for id in vec {
+            slab.remove(id).expect("Internal error: Unknown id enqueued for remove.");
+        }
     }
 }

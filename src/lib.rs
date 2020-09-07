@@ -3,11 +3,14 @@
 //!
 //! It uses async/await mechanisms of Rust, tasks should have manual suspension points inside
 //! async functions to allow scheduler to switch tasks (see [`yield_once!()`](macro.yield_once.html)
-//! macro). Tasks can be dynamically
-//! [created](struct.WheelHandle.html#method.spawn)/[cancelled](struct.WheelHandle.html#method.cancel)/[suspended](struct.WheelHandle.html#method.suspend)/[resumed](struct.WheelHandle.html#method.resume)
+//! macro). Tasks can be dynamically [created]/[cancelled]/[suspended]/[resumed]
 //! and can `await` external events (e.g from other threads or interrupts). For more information about scheduler
 //! see [`Wheel`](struct.Wheel.html).
 //!
+//! [created]: struct.WheelHandle.html#method.spawn
+//! [cancelled]: struct.WheelHandle.html#method.cancel
+//! [suspended]: struct.WheelHandle.html#method.suspend
+//! [resumed]: struct.WheelHandle.html#method.resume
 //! # Examples
 //! Simple program that reads data from sensor and processes it.
 //! ```
@@ -68,8 +71,7 @@
 #![warn(clippy::cargo,
     clippy::needless_borrow,
     clippy::pedantic,
-    clippy::nursery,
-    rust_2018_idioms)]
+    clippy::nursery)]
 
 extern crate alloc;
 
