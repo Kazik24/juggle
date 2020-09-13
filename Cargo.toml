@@ -16,9 +16,6 @@ categories = ["asynchronous", "embedded", "no-std"]
 default = ["std"]
 std = []
 
-[dependencies]
-pin-project = "0.4.23"
-
 [dev-dependencies]
 rand = "0.7.3"
-smol = "0.1.5"
+smol = "1.0.0"

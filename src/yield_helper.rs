@@ -1,14 +1,12 @@
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
-use pin_project::pin_project;
 
 /// Helper struct for dealing with task switching.
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct Yield(bool);
 
 #[doc(hidden)]
-#[pin_project]
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct YieldWhile<F: FnMut() -> bool>(F);
 
@@ -46,7 +44,7 @@ impl Yield {
     /// # fn main(){
     /// # use juggle::Yield;
     /// # use core::sync::atomic::{AtomicBool, Ordering};
-    /// # smol::run(async move{
+    /// # smol::block_on(async move{
     /// let interrupt_flag: &AtomicBool = //...
     /// # &AtomicBool::new(true);
     ///
@@ -73,7 +71,9 @@ impl Future for Yield {
 impl<F: FnMut() -> bool> Future for YieldWhile<F> {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if !self.project().0() { Poll::Ready(()) } else {
+        //SAFETY: F does not care about being pinned
+        let func = unsafe{ &mut self.get_unchecked_mut().0 };
+        if !func() { Poll::Ready(()) } else {
             cx.waker().wake_by_ref();
             Poll::Pending
         }

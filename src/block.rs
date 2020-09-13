@@ -14,7 +14,7 @@ use crate::utils::noop_waker;
 /// ```
 /// use juggle::*;
 ///
-/// let result = spin_block_on(async move{
+/// let result = spin_block_on(async move {
 ///     Yield::times(10).await;
 ///     10
 /// });

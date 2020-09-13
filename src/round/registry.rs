@@ -138,6 +138,8 @@ impl<'future> Registry<'future>{
         self.iterate_flag.set(self.iterate_flag.get() + 1);
         Guard(&self.borrow_flag,&self.iterate_flag)
     }
+    /// Note that when iterating elements, the count is not updated. Its affected only after iteration is
+    /// done.
     pub fn retain(&self,mut func: impl FnMut(TaskKey,&DynamicFuture<'future>)->bool){
         #[cfg(debug_assertions)]
         let _guard = self.guard_retain();

@@ -32,6 +32,10 @@ pub trait DynamicWake {
     fn wake(&self);
 }
 
+impl<F> DynamicWake for F where F: Fn() + Send + Sync + 'static {
+    fn wake(&self) { self(); }
+}
+
 /// Convert atomic reference counted pointer to type implementing [`DynamicWake`](trait.DynamicWake.html)
 /// into Waker.
 ///

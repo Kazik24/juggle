@@ -78,10 +78,11 @@ impl<'futures> WheelHandle<'futures> {
     pub(crate) fn new(ptr: Weak<SchedulerAlgorithm<'futures>>) -> Self { Self { ptr } }
 
 
-    /// Checks if this handle is valid.
+    /// Checks if this handle is valid. Handles are weak references bound to specific
+    /// [`Wheel`](struct.Wheel.html).
     ///
     /// This method returns true if specific handle is valid. If handle is valid
-    /// it means that it can be used to control tasks in [`Wheel`](struct.Wheel.html) associated with
+    /// it means that it can be used to control tasks in `Wheel` associated with
     /// it. Handle is valid until associated wheel is dropped or
     /// [`locked`](struct.Wheel.html#method.lock).
     ///
@@ -97,7 +98,7 @@ impl<'futures> WheelHandle<'futures> {
     /// ```
     pub fn is_valid(&self) -> bool { self.ptr.strong_count() != 0 }
 
-    /// Checks if this and the other handle reference the same [`Wheel`](struct.Wheel.html).
+    /// Checks if this and other handle reference the same [`Wheel`](struct.Wheel.html).
     /// # Examples
     /// ```
     /// use juggle::*;
@@ -170,8 +171,8 @@ impl<'futures> WheelHandle<'futures> {
     /// Suspend task with given id.
     ///
     /// Suspended tasks cannot execute until resumed. After this operation the task will change
-    /// state to `Suspended`. Returns true if task was suspended and false if it was already
-    /// suspended, or if id or handle is invalid.
+    /// state to `Suspended`. Returns true if task was successfully suspended and false if it can't
+    /// be suspended for any reason (e.g it was already suspended, cancelled or handle is [`invalid`](#method.is_valid)).
     pub fn suspend(&self, id: IdNum) -> bool {
         let this = unwrap_weak!(self,false);
         this.suspend(id.to_usize())
@@ -180,7 +181,7 @@ impl<'futures> WheelHandle<'futures> {
     ///
     /// After this operation given task can be executed again. It will change state to `Runnable`
     /// or `Waiting` in case it still waits for some external event. Returns true if task was
-    /// resumed, and false if it wasn't suspended, or if id or handle is invalid.
+    /// successfully resumed, and false if it wasn't suspended or handle is [`invalid`](#method.is_valid).
     pub fn resume(&self, id: IdNum) -> bool {
         let this = unwrap_weak!(self,false);
         this.resume(id.to_usize())
@@ -196,8 +197,8 @@ impl<'futures> WheelHandle<'futures> {
     /// use juggle::*;
     ///
     /// let wheel = Wheel::new();
-    /// let id1 = wheel.handle().spawn(SpawnParams::default(),async move {/*...*/}).unwrap();
-    /// let id2 = wheel.handle().spawn(SpawnParams::suspended(true),async move {/*...*/}).unwrap();
+    /// let id1 = wheel.handle().spawn(SpawnParams::default(),async {/*...*/}).unwrap();
+    /// let id2 = wheel.handle().spawn(SpawnParams::suspended(true),async {/*...*/}).unwrap();
     ///
     /// assert_eq!(wheel.handle().get_state(id1),State::Runnable);
     /// assert_eq!(wheel.handle().get_state(id2),State::Suspended);
@@ -259,11 +260,11 @@ impl<'futures> WheelHandle<'futures> {
         let this = unwrap_weak!(self,func(None));
         this.with_name(id.to_usize(),move |name|func(name.as_str()))
     }
-    /// Returns name of current task as new String.
+    /// Returns name of current task.
     ///
     /// Returns `None` when:
     /// * Task is unnamed.
-    /// * This method was not called inside task.
+    /// * Not called inside task.
     /// * Handle is [`invalid`](#method.is_valid).
     ///
     /// Note that if current task was named with static lifetime string, it will be returned from

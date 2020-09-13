@@ -5,7 +5,6 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use crate::utils::{TimerClock, TimingGroup};
 use crate::round::Ucw;
-use pin_project::*;
 
 /// Helper for equally dividing time slots across multiple tasks. Implements `Future`.
 ///
@@ -69,10 +68,8 @@ use pin_project::*;
 /// //run scheduler
 /// smol::block_on(wheel).unwrap();
 /// ```
-#[pin_project]
 pub struct LoadBalance<F: Future, C: TimerClock> {
     record: Registered<C>,
-    #[pin]
     future: F,
 }
 
@@ -82,9 +79,12 @@ struct Registered<C: TimerClock> {
 }
 
 impl<C: TimerClock> Registered<C> {
+    #[inline(always)]
+    fn do_unregister(&self){ self.group.0.borrow_mut().remove(self.index); }
+    #[inline]
     fn unregister_and_get(self) -> Rc<(Ucw<TimingGroup<C::Duration>>, C)> {
         //equivalent to running drop
-        self.group.0.borrow_mut().remove(self.index);
+        self.do_unregister();
         //SAFETY: we just run destructor code, now perform moving value out, and suppress
         //real destructor.
         unsafe {
@@ -97,7 +97,7 @@ impl<C: TimerClock> Registered<C> {
 
 impl<C: TimerClock> Drop for Registered<C> {
     fn drop(&mut self) {
-        self.group.0.borrow_mut().remove(self.index);
+        self.do_unregister();
     }
 }
 
@@ -141,17 +141,20 @@ impl<F: Future, C: TimerClock> LoadBalance<F, C> {
 
 impl<F: Future, C: TimerClock> Future for LoadBalance<F, C> {
     type Output = F::Output;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
-        let this = self.project();
-        if !this.record.group.0.borrow().can_execute(this.record.index) {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+        if !self.record.group.0.borrow().can_execute(self.record.index) {
             cx.waker().wake_by_ref();
             return Poll::Pending;
         }
 
-        let start = this.record.group.1.start(); //start measure
-        let res = this.future.poll(cx);
-        let dur = this.record.group.1.stop(start); //end measure
-        this.record.group.0.borrow_mut().update_duration(this.record.index, dur);
+        let start = self.record.group.1.start(); //start measure
+
+        //SAFETY: we just map pinned mutable references from inside of a struct
+        let future = unsafe{ self.as_mut().map_unchecked_mut(|v|&mut v.future) };
+
+        let res = future.poll(cx);
+        let dur = self.record.group.1.stop(start); //end measure
+        self.record.group.0.borrow_mut().update_duration(self.record.index, dur);
         return res;
     }
 }

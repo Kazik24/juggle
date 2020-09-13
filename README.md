@@ -5,17 +5,21 @@ https://github.com/Kazik24/juggle/actions)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](
 https://github.com/Kazik24/juggle)
 
-Async task switching for single threaded environments.
-<br>
-`Work in progress...`
+Async task switching for
+[cooperative multitasking](https://en.wikipedia.org/wiki/Cooperative_multitasking)
+in single threaded environments.
 
-This library provides tools to manage a group of tasks in single threaded or embedded
-environments. Note than this is not an operating system which means it's very cheap.
-It uses async/await mechanisms of Rust. Tasks are scheduled non-preemptively, which
-means they are not executed concurrently, you can insert manual switching points
-using provided macros or `Yield` utility. Tasks can be dynamically created, cancelled,
-suspended or resumed. If all tasks are currently waiting to be woken then scheduler
-itself will yield.
+This library provides tools to dynamically manage group of tasks in single threaded or embedded
+environments. Note than this is not an operating system but can serve as a simple replacement
+where you don't need context switches, for example on embedded applications.
+Tasks use async/await mechanisms of Rust and it's programmer job to insert switching
+points into them. Luckily this crate provides `Yield` utility for this as well as
+handling busy waits. Primary scheduler (`Wheel`) can dynamically spawn, suspend, resume
+or cancel tasks managed by round robin algorithm.
+
+Crate by default uses std library (feature `std`) but also can be configured
+as `#![no_std]` with `alloc` crate, this disables some features in `util`
+module.
 
 ### Examples
 Simple program that reads data from sensor and processes it.

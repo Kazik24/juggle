@@ -36,8 +36,8 @@ use super::handle::*;
 /// New and rescheduled tasks are added at the end of queue. Task on front is poped and executed.
 /// If task finishes or becomes cancelled then it is removed from scheduler, and if task is
 /// suspended then it is also removed but only from queue not the scheduler.
-/// Tasks that were blocked by some async event are checked periodically so their rescheduling
-/// might not happen immedialty after task is woken.
+/// Tasks that were blocked by some async event are checked periodically and when woken they are
+/// added at the end of queue, this might not happen immedialty after task is woken.
 ///
 /// # Managing tasks
 /// You can [spawn]/[suspend]/[resume]/[cancel] any task as long as you have it's [identifier], and
@@ -129,8 +129,9 @@ impl<'futures> Wheel<'futures> {
 
     /// Obtain reference to handle that is used to spawn/control tasks.
     ///
-    /// Handle can be cloned inside this thread which is ensured because
-    /// [`WheelHandle`](struct.WheelHandle.html) is not Send and not Sync.
+    /// Any interaction with `Wheel`'s content is done by handles. Handles works as reference
+    /// counted pointers, they can be cloned to use inside tasks but cannot be shared
+    /// between threads.
     pub fn handle(&self) -> &WheelHandle<'futures> { &self.handle }
 
     /// Lock this wheel preventing all handles from affecting the tasks.
@@ -153,7 +154,7 @@ impl<'futures> LockedWheel<'futures> {
     /// Unlock this wheel so that a handle can be obtained and used to spawn or control tasks.
     ///
     /// Transforms this instance back to [`Wheel`](struct.Wheel.html)
-    /// Note that if handles that were invalidated after this wheel was locked will not be valid
+    /// Note that handles which were invalidated after this wheel was locked won't be valid
     /// again after calling this method, new [`handle`](struct.Wheel.html#method.handle) should be obtained.
     pub fn unlock(self) -> Wheel<'futures> {
         Wheel::from_inner(self.alg)

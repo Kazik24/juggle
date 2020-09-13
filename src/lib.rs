@@ -2,9 +2,10 @@
 //! [cooperative multitasking](https://en.wikipedia.org/wiki/Cooperative_multitasking).
 //!
 //! It uses async/await mechanisms of Rust, tasks should have manual suspension points inside
-//! async functions to allow scheduler to switch tasks (see [`yield_once!()`](macro.yield_once.html)
+//! async functions to allow scheduler to switch them (see [`yield_once!()`](macro.yield_once.html)
 //! macro). Tasks can be dynamically [created]/[cancelled]/[suspended]/[resumed]
-//! and can `await` external events (e.g from other threads or interrupts). For more information about scheduler
+//! and can `await` external events (e.g from other threads or interrupts) as any normal async
+//! functions. For more information about scheduler
 //! see [`Wheel`](struct.Wheel.html).
 //!
 //! [created]: struct.WheelHandle.html#method.spawn
@@ -103,7 +104,7 @@ pub use self::yield_helper::{Yield, YieldTimes, YieldWhile};
 ///     yield_once!();
 ///     do_even_more_work();
 /// }
-/// # fn main(){ smol::run(some_task()); }
+/// # fn main(){ smol::block_on(some_task()); }
 /// ```
 #[macro_export]
 macro_rules! yield_once {
@@ -132,7 +133,7 @@ macro_rules! yield_once {
 ///     do_some_work();
 ///     shutdown_external_timer();
 /// }
-/// # fn main(){ smol::run(timer_task()); }
+/// # fn main(){ smol::block_on(timer_task()); }
 /// ```
 #[macro_export]
 macro_rules! yield_while {

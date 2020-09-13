@@ -142,7 +142,7 @@ impl<C: TimerCount> TimingGroup<C> {
     }
     /// Returns number of registered entries in this group.
     pub fn count(&self) -> usize { self.info.len() }
-    /// Returns time slot count for given key or None if this key is invalid.
+    /// Returns time slot count for given key or `None` if this key is invalid.
     pub fn get_slot_count(&self, key: usize) -> Option<u16> { self.info.get(key).map(|v| v.proportion.get()) }
     /// Remove all entries from this group and reset its state.
     pub fn clear(&mut self) {

@@ -42,7 +42,7 @@ pub fn test_round_robin() {
     handle.spawn("T4", test_task(handle.clone())).unwrap();
     println!("Valid: {}", handle.is_valid());
 
-    smol::run(sch).unwrap();
+    smol::block_on(sch).unwrap();
     println!("Valid: {}", handle.is_valid());
     println!("Finished round robin.");
 }
