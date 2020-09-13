@@ -1,6 +1,6 @@
 [package]
 name = "juggle"
-version = "0.1.0"
+version = "0.1.1-dev"
 authors = ["Kazik24 <kazik24official@gmail.com>"]
 edition = "2018"
 description = "Async task switching for single threaded environments."
