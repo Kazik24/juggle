@@ -4,6 +4,10 @@
 https://github.com/Kazik24/juggle/actions)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](
 https://github.com/Kazik24/juggle)
+[![Crate](https://img.shields.io/crates/v/juggle.svg)](
+https://crates.io/crates/juggle)
+[![Documentation](https://docs.rs/juggle/badge.svg)](
+https://docs.rs/juggle)
 
 Async task switching for
 [cooperative multitasking](https://en.wikipedia.org/wiki/Cooperative_multitasking)
