@@ -38,6 +38,9 @@ impl Drop for TaskRef<'_,'_>{
 }
 
 impl<'future> Registry<'future>{
+    #[cfg(debug_assertions)]
+    const SENTINEL: usize = usize::MAX; //so that incrementing it would overflow
+
     #[inline]
     pub fn new()->Self{
         Self{
@@ -50,7 +53,12 @@ impl<'future> Registry<'future>{
     }
     #[inline]
     pub fn get<'a>(&'a self,key: TaskKey)->Option<TaskRef<'a,'future>>{
-        //SAFETY: borrow flag guards against mutable borrows
+        #[cfg(debug_assertions)]
+        if self.borrow_flag.get() == Self::SENTINEL {
+            panic!("Registry: Cannot borrow task during retain operation.");
+        }
+
+        //SAFETY: borrow flag saves state of struct as borrowed
         match unsafe{ &*self.slab.get() }.get(key) {
             None => None, //no borrow needed
             Some(task) => {
@@ -68,7 +76,11 @@ impl<'future> Registry<'future>{
     pub fn insert(&self,val: DynamicFuture<'future>)->TaskKey{
         #[cfg(debug_assertions)]
         if self.iterate_flag.get() != 0 {
-            panic!("Registry: Cannot insert task during iteration.");
+            if self.iterate_flag.get() == Self::SENTINEL{
+                panic!("Registry: Cannot insert task during retain operation.");
+            }else{
+                panic!("Registry: Cannot insert task during iteration.");
+            }
         }
         unsafe{
             //SAFETY: We know that chunk slab wont reallocate or change memory of already
@@ -81,7 +93,11 @@ impl<'future> Registry<'future>{
     pub fn remove(&self,key: TaskKey)->Option<DynamicFuture<'future>>{
         #[cfg(debug_assertions)]
         if self.borrow_flag.get() != 0 || self.iterate_flag.get() != 0 {
-            panic!("Registry: Cannot remove task that might be borrowed.");
+            if self.borrow_flag.get() == Self::SENTINEL {
+                panic!("Registry: Cannot remove task during retain operation.");
+            }else{
+                panic!("Registry: Cannot remove task that might be borrowed.");
+            }
         }
         //SAFETY: we just checked if anything is borrowed
         unsafe{ (&mut *self.slab.get()).remove(key) }
@@ -89,12 +105,13 @@ impl<'future> Registry<'future>{
     #[inline]
     pub fn count(&self)->usize{
         //SAFETY: this is always safe cause iterators and borrows cannot resize slab and resizing
-        //operations such as insert or remove are not recursive.
+        //operations such as insert or remove are not recursive (with exception for retain which
+        //updates count after iterating all tasks).
         unsafe{ (&mut *self.slab.get()).len() }
     }
 
     #[cfg(debug_assertions)]
-    #[inline]
+    #[inline(always)]
     fn guarded_iterator(&self) -> impl Iterator<Item=(TaskKey, &DynamicFuture<'future>)> {
         struct It<'a,T>(T,&'a Cell<usize>);
         impl<T> Drop for It<'_,T>{
@@ -103,6 +120,10 @@ impl<'future> Registry<'future>{
         impl<'a,T: Iterator> Iterator for It<'a,T>{
             type Item = T::Item;
             fn next(&mut self) -> Option<Self::Item> { self.0.next() }
+        }
+
+        if self.iterate_flag.get() == Self::SENTINEL { //check if we're not retaining
+            panic!("Registry: Cannot iterate during retain operation.");
         }
 
         self.iterate_flag.set(self.iterate_flag.get() + 1);//we will return borrow from this function
@@ -122,20 +143,21 @@ impl<'future> Registry<'future>{
     }
 
     #[cfg(debug_assertions)]
+    #[inline(always)]
     fn guard_retain<'b>(&'b self)->impl Drop + 'b{
         if self.borrow_flag.get() != 0 || self.iterate_flag.get() != 0 {
-            panic!("Registry: Cannot remove task that might be borrowed.");
+            panic!("Registry: Cannot remove tasks that might be borrowed.");
         }
         struct Guard<'a>(&'a Cell<usize>, &'a Cell<usize>);
         impl Drop for Guard<'_>{
             fn drop(&mut self) {
-                self.0.set(self.0.get() - 1); //decrement both flags
-                self.1.set(self.1.get() - 1);
+                self.0.set(0); //set 0 to both flags as it was before setting it to SENTINEL
+                self.1.set(0);
             }
         }
-
-        self.borrow_flag.set(self.borrow_flag.get() + 1); //increment both flags before returning guard
-        self.iterate_flag.set(self.iterate_flag.get() + 1);
+        //both flags are 0 at this point
+        self.borrow_flag.set(Self::SENTINEL); //lock both flags before returning guard
+        self.iterate_flag.set(Self::SENTINEL);
         Guard(&self.borrow_flag,&self.iterate_flag)
     }
     /// Note that when iterating elements, the count is not updated. Its affected only after iteration is
@@ -144,8 +166,8 @@ impl<'future> Registry<'future>{
         #[cfg(debug_assertions)]
         let _guard = self.guard_retain();
 
-        //SAFETY: we check for borrow and iteration in 'guard_retain' and create guard that
-        //decrements flags on drop so if 'func' panics, flags are restored.
+        //SAFETY: we check for borrow and iteration in 'guard_retain' lock all flags and create
+        //guard that restores flags on drop so if 'func' panics, flags are restored.
         let slab = unsafe{ &mut *self.slab.get() };
         //todo find better way than allocating vec for ids
         let mut vec = Vec::new();
