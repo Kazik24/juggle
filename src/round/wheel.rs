@@ -40,7 +40,7 @@ use super::handle::*;
 /// added at the end of queue, this might not happen immedialty after task is woken.
 ///
 /// # Managing tasks
-/// You can [spawn]/[suspend]/[resume]/[cancel] any task as long as you have it's [identifier], and
+/// You can [spawn]/[suspend]/[resume]/[cancel] any task as long as you have its [identifier], and
 /// [handle](struct.WheelHandle.html) to this scheduler. Handle can be obtained from this
 /// object using [that method](#method.handle), and task identifiers are returned from
 /// functions that spawn tasks (e.g [`spawn`](struct.WheelHandle.html#method.spawn)).

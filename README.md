@@ -22,7 +22,7 @@ handling busy waits. Primary scheduler (`Wheel`) can dynamically spawn, suspend,
 or cancel tasks managed by round robin algorithm.
 
 Crate by default uses std library (feature `std`) but also can be configured
-as `#![no_std]` with `alloc` crate, this disables some features in `util`
+as `#![no_std]` with `alloc` crate, this disables some features in `utils`
 module.
 
 ### Examples

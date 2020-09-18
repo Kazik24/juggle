@@ -241,10 +241,10 @@ impl<'futures> SchedulerAlgorithm<'futures> {
             } else {
                 self.ctrl.beat_once(&self.runnable.0, &self.runnable.1, cx.waker())
             };
+            self.which_buffer.set(!self.which_buffer.get());
             if let Rotate::Wait = beat_result {
                 return Poll::Pending;
             }
-            self.which_buffer.set(!self.which_buffer.get());
             if self.runnable.0.borrow().is_empty() && self.runnable.1.borrow().is_empty()
                 && self.ctrl.deferred.borrow().is_empty() { break; }
         }
@@ -258,11 +258,11 @@ impl Control<'_> {
     fn dec_suspended(&self) { self.suspended_count.set(self.suspended_count.get() - 1) }
 
     #[inline]
-    fn process_tasks(&self, from: &Ucw<VecDeque<TaskKey>>, waker: &Waker) -> Rotate {
+    fn process_tasks(&self, from: &Ucw<VecDeque<TaskKey>>, to: &Ucw<VecDeque<TaskKey>>, waker: &Waker) -> Rotate {
         let from = &mut from.borrow_mut();
         let deferred = &mut self.deferred.borrow_mut();
         if !deferred.is_empty() && !Self::drain_runnable(&self.registry, deferred, from) {
-            if from.is_empty() { //if has no work to do
+            if from.is_empty() && to.borrow().is_empty() { //if has no work to do
                 //no runnable task found, register waker
                 self.last_waker.register(waker.clone());
                 //check once again if no task was woken during this time
@@ -277,7 +277,7 @@ impl Control<'_> {
         Rotate::Continue
     }
     fn beat_once(&self, from: &Ucw<VecDeque<TaskKey>>, to: &Ucw<VecDeque<TaskKey>>, waker: &Waker) -> Rotate {
-        match self.process_tasks(from, waker) {
+        match self.process_tasks(from, to, waker) {
             Rotate::Wait => Rotate::Wait,//indicates that future should wait for waker now
             Rotate::Continue => {
                 self.rotate_once(from, to);
@@ -325,12 +325,13 @@ impl Control<'_> {
                 }
             }
         }
-        if self.scan_registry.replace(false) { //clear scan flag and perform scan
+        if self.scan_registry.get() { //perform scan
+            self.scan_registry.set(false); //clear flag
             //todo make this more efficient
             //from queue is now empty
             //but to queue must be checked if it contains any cancelled tasks
             to.borrow_mut().retain(|&key| !self.registry.get(key).unwrap().is_cancelled());
-            //not registry can be cleared
+            //now registry can be cleared
             self.registry.retain(|_,v| !v.is_cancelled());
         }
     }
