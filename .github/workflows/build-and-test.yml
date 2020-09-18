@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macOS-latest]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
 
     steps:
     - uses: actions/checkout@v2
@@ -20,7 +20,7 @@ jobs:
     - name: Build default
       run: cargo build
     - name: Run tests with no_std
-      run: cargo test --no-default-features
+      run: cargo test --no-default-features --verbose
     - name: Run tests with no_std in release mode
       run: cargo test --no-default-features --release
     - name: Run tests default
