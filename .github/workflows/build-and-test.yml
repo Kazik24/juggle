@@ -11,19 +11,48 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macOS-latest]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        rust: [stable, nightly, 1.46.0]
 
     steps:
     - uses: actions/checkout@v2
+    - name: Install Rust ${{ matrix.rust }}
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust }}
+        override: true
+        profile: minimal
+
     - name: Build with no_std
-      run: cargo build --no-default-features
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --no-default-features
+
     - name: Build default
-      run: cargo build
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+
     - name: Run tests with no_std
-      run: cargo test --no-default-features
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --no-default-features
+
     - name: Run tests with no_std in release mode
-      run: cargo test --no-default-features --release
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --no-default-features --release
+
     - name: Run tests default
-      run: cargo test
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+
     - name: Run tests default in release mode
-      run: cargo test --release
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --release
