@@ -3,7 +3,6 @@ use crate::round::algorithm::TaskKey;
 use crate::round::dyn_future::DynamicFuture;
 use core::cell::*;
 use core::ops::Deref;
-use alloc::vec::Vec;
 
 /// ChunkSlab wrapper with interior mutability.
 /// SAFETY: Intended only to use inside this crate.
@@ -162,22 +161,13 @@ impl<'future> Registry<'future>{
     }
     /// Note that when iterating elements, the count is not updated. Its affected only after iteration is
     /// done.
-    pub fn retain(&self,mut func: impl FnMut(TaskKey,&DynamicFuture<'future>)->bool){
+    pub fn retain(&self,func: impl FnMut(TaskKey,&DynamicFuture<'future>)->bool){
         #[cfg(debug_assertions)]
         let _guard = self.guard_retain();
 
         //SAFETY: we check for borrow and iteration in 'guard_retain' lock all flags and create
         //guard that restores flags on drop so if 'func' panics, flags are restored.
         let slab = unsafe{ &mut *self.slab.get() };
-        //todo find better way than allocating vec for ids
-        let mut vec = Vec::new();
-        for (k,v) in slab.iter() {
-            if !func(k,v) {
-                vec.push(k);
-            }
-        }
-        for id in vec {
-            slab.remove(id).expect("Internal error: Unknown id enqueued for remove.");
-        }
+        slab.retain(func);
     }
 }

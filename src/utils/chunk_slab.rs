@@ -1,12 +1,12 @@
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 use core::mem::replace;
+use smallvec::SmallVec;
 
 const CHUNK_SIZE: usize = 16;
 
 
 pub(crate) struct ChunkSlab<I: ChunkSlabKey, T> {
-    entries: Vec<Box<Chunk<I, T>>>,
+    entries: SmallVec<[Box<Chunk<I, T>>;2]>, //store 2*CHUNK_SIZE tasks with one less indirection
     len: usize,
     next: I,
 }
@@ -20,7 +20,7 @@ impl<I: ChunkSlabKey, T> Chunk<I, T> {
         let mut data: [Entry<I, T>; CHUNK_SIZE] = Default::default();
         data[0] = Entry::Full(first);
         start = start.add_one();
-        for elem in data[1..].iter_mut() {
+        for elem in &mut data[1..] {
             start = I::from_index(start.into_index().wrapping_add(1));
             *elem = Entry::Empty(start);
         }
@@ -42,14 +42,14 @@ impl<I: ChunkSlabKey, T> Default for Entry<I, T> {
 impl<I: ChunkSlabKey, T> ChunkSlab<I, T> {
     pub fn new() -> Self {
         Self {
-            entries: Vec::new(),
+            entries: SmallVec::new(),
             next: I::zero(),
             len: 0,
         }
     }
     pub fn with_capacity(cap: usize) -> Self {
         Self {
-            entries: Vec::with_capacity(cap / CHUNK_SIZE + if cap % CHUNK_SIZE != 0 { 1 } else { 0 }),
+            entries: SmallVec::with_capacity(cap / CHUNK_SIZE + if cap % CHUNK_SIZE != 0 { 1 } else { 0 }),
             next: I::zero(),
             len: 0,
         }
@@ -147,6 +147,23 @@ impl<I: ChunkSlabKey, T> ChunkSlab<I, T> {
             }
         })
     }
+
+    pub fn retain(&mut self,mut func: impl FnMut(I,&T)->bool){
+        for (ci,chunk) in self.entries.iter_mut().enumerate() {
+            let chunk: &mut Box<Chunk<I,T>> = chunk;
+            let offset = ci*CHUNK_SIZE;
+            for (i,val) in chunk.data.iter_mut().enumerate() {
+                if let Entry::Full(value) = val {
+                    let key = I::from_index(offset + i);
+                    if !func(key,value) { //remove
+                        *val = Entry::Empty(self.next);
+                        self.len -= 1;
+                        self.next = key;
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub(crate) trait ChunkSlabKey: Copy {
@@ -176,8 +193,13 @@ impl_key!(u8,u16,u32,usize);
 mod tests {
     extern crate std;
     use alloc::string::String;
+    use alloc::collections::BTreeSet;
+    use alloc::vec::Vec;
     use core::fmt::*;
+    use core::iter::successors;
     use super::*;
+    use rand::prelude::StdRng;
+    use rand::{SeedableRng, Rng};
 
     fn under_test<I: ChunkSlabKey>(max_key: I) -> ChunkSlab<I, i32> {
         let mut slab = ChunkSlab::new();
@@ -265,6 +287,34 @@ mod tests {
         assert_eq!(slab.get(k3), None);
         assert_eq!(slab.get(k4), None);
         assert_eq!(slab.get(k5), None);
+    }
+
+    #[test]
+    fn test_retain(){
+        let rand = &mut StdRng::seed_from_u64(96024);
+        for len in successors(Some(2),|a|Some(a+rand.gen_range(5,10))).take(100).collect::<Vec<_>>() {
+            let mut slab = ChunkSlab::<u16, _>::new();
+            let mut entries = (0..len).map(|i|(i,slab.insert(i))).collect::<Vec<_>>();
+            assert_eq!(entries.len(),len);
+            assert_eq!(slab.len(),entries.len());
+            let remove = entries.iter().copied().filter(|_|rand.gen_bool(0.7)).collect::<Vec<_>>();
+            for e in &remove {
+                let a = slab.remove(e.1).unwrap();
+                let b = entries.remove(entries.iter().position(|v|e.1 == v.1).unwrap());
+                assert_eq!(a,b.0);
+            }
+            assert_eq!(slab.len(),entries.len());
+            slab.retain(|k,v|{
+                if rand.gen_bool(0.5) {
+                    let res = entries.remove(entries.iter().position(|v|v.1 == k).unwrap());
+                    assert_eq!(res.0,*v);
+                    false
+                } else { true }
+            });
+            assert_eq!(slab.len(),entries.len());
+            let slab = slab.iter().map(|(k,v)|(*v,k)).collect::<BTreeSet<_>>();
+            assert_eq!(slab,entries.into_iter().collect::<BTreeSet<_>>());
+        }
     }
 
     #[test]
