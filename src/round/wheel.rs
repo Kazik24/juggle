@@ -173,6 +173,10 @@ impl<'futures> Debug for LockedWheel<'futures> {
     }
 }
 
+impl<'futures> Default for Wheel<'futures> {
+    fn default() -> Self { Self::new() }
+}
+
 
 impl<'futures> Future for Wheel<'futures> {
     type Output = Result<(), SuspendError>;

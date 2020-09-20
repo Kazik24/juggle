@@ -8,6 +8,8 @@ https://github.com/Kazik24/juggle)
 https://crates.io/crates/juggle)
 [![Documentation](https://docs.rs/juggle/badge.svg)](
 https://docs.rs/juggle)
+[![Rust version](https://img.shields.io/badge/Rust-1.46+-blueviolet.svg)](
+https://docs.rs/juggle)
 
 Async task switching for
 [cooperative multitasking](https://en.wikipedia.org/wiki/Cooperative_multitasking)

@@ -126,10 +126,10 @@ impl<I: ChunkSlabKey, T> ChunkSlab<I, T> {
         }
     }
     pub fn iter(&self) -> impl Iterator<Item=(I, &T)> {
-        self.entries.iter().enumerate().map(|e| {
+        self.entries.iter().enumerate().flat_map(|e| {
             let off = e.0 * CHUNK_SIZE;
             e.1.data.iter().enumerate().map(move |e| (off + e.0, e.1))
-        }).flatten().filter_map(|e| {
+        }).filter_map(|e| {
             match e.1 {
                 Entry::Full(v) => Some((I::from_index(e.0), v)),
                 Entry::Empty(_) => None,
@@ -137,10 +137,10 @@ impl<I: ChunkSlabKey, T> ChunkSlab<I, T> {
         })
     }
     pub fn iter_mut(&mut self) -> impl Iterator<Item=(I, &mut T)> {
-        self.entries.iter_mut().enumerate().map(|e| {
+        self.entries.iter_mut().enumerate().flat_map(|e| {
             let off = e.0 * CHUNK_SIZE;
             e.1.data.iter_mut().enumerate().map(move |e| (off + e.0, e.1))
-        }).flatten().filter_map(|e| {
+        }).filter_map(|e| {
             match e.1 {
                 Entry::Full(v) => Some((I::from_index(e.0), v)),
                 Entry::Empty(_) => None,
@@ -150,7 +150,6 @@ impl<I: ChunkSlabKey, T> ChunkSlab<I, T> {
 
     pub fn retain(&mut self,mut func: impl FnMut(I,&T)->bool){
         for (ci,chunk) in self.entries.iter_mut().enumerate() {
-            let chunk: &mut Box<Chunk<I,T>> = chunk;
             let offset = ci*CHUNK_SIZE;
             for (i,val) in chunk.data.iter_mut().enumerate() {
                 if let Entry::Full(value) = val {

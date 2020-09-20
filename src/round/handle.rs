@@ -272,7 +272,7 @@ impl<'futures> WheelHandle<'futures> {
     /// with fresh allocated `String` of that name. If you don't want to allocate temporary memory
     /// for string use in such case, use [`with_name`](#method.with_name).
     pub fn get_current_name(&self) -> Option<Cow<'static,str>> {
-        self.current().map(|id| self.get_name(id)).flatten()
+        self.current().and_then(|id| self.get_name(id))
     }
     /// Returns name of task with given id.
     /// Returns `None` when:
@@ -373,12 +373,7 @@ impl Default for SpawnParams {
 
 impl Debug for SpawnParams {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let s: Option<&str> = match &self.name {
-            TaskName::None => None,
-            TaskName::Dynamic(s) => Some(&s),
-            TaskName::Static(s) => Some(s),
-        };
-        if let Some(s) = s {
+        if let Some(s) = self.name.as_str() {
             write!(f, "SpawnParams[name: \"{}\", suspended: {}]", s, self.suspended)
         } else {
             write!(f, "SpawnParams[suspended: {}]", self.suspended)
@@ -387,16 +382,16 @@ impl Debug for SpawnParams {
 }
 
 impl From<&'static str> for SpawnParams {
-    /// Works as [named](struct.SpawnParams.html#method.named) method.
-    fn from(v: &'static str) -> Self { SpawnParams::named(v) }
+    /// Works as [`named`](struct.SpawnParams.html#method.named) method.
+    fn from(v: &'static str) -> Self { Self::named(v) }
 }
 
 impl From<String> for SpawnParams {
-    /// Works as [dyn_named](struct.SpawnParams.html#method.dyn_named) method.
-    fn from(v: String) -> Self { SpawnParams::dyn_named(v) }
+    /// Works as [`dyn_named`](struct.SpawnParams.html#method.dyn_named) method.
+    fn from(v: String) -> Self { Self::dyn_named(v) }
 }
 
 impl From<bool> for SpawnParams {
-    /// Works as [suspended](struct.SpawnParams.html#method.suspended) method.
-    fn from(v: bool) -> Self { SpawnParams::suspended(v) }
+    /// Works as [`suspended`](struct.SpawnParams.html#method.suspended) method.
+    fn from(v: bool) -> Self { Self::suspended(v) }
 }

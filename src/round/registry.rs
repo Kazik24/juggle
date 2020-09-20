@@ -106,7 +106,7 @@ impl<'future> Registry<'future>{
         //SAFETY: this is always safe cause iterators and borrows cannot resize slab and resizing
         //operations such as insert or remove are not recursive (with exception for retain which
         //updates count after iterating all tasks).
-        unsafe{ (&mut *self.slab.get()).len() }
+        unsafe{ (&*self.slab.get()).len() }
     }
 
     #[cfg(debug_assertions)]

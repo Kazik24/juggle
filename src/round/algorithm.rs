@@ -221,7 +221,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
             fn fmt(&self, f: &mut Formatter<'_>) -> Result {
                 let mut buff = self.0.ctrl.registry.iter().map(|(k, _)| DebugTask(&self.0.ctrl.registry, Some(k)))
                     .filter(|t| {
-                        match t.1.map(|id| t.0.get(id)).flatten() {
+                        match t.1.and_then(|id| t.0.get(id)) {
                             Some(task) => task.is_suspended(),
                             None => false,
                         }
