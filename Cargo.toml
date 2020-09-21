@@ -1,9 +1,9 @@
 [package]
 name = "juggle"
-version = "0.1.1-dev"
+version = "0.1.1"
 authors = ["Kazik24 <kazik24official@gmail.com>"]
 edition = "2018"
-description = "Async task switching for single threaded environments."
+description = "Async task switching for cooperative multitasking in single thread environments with no_std support."
 documentation = "https://docs.rs/juggle"
 readme = "README.md"
 homepage = "https://github.com/Kazik24/juggle"

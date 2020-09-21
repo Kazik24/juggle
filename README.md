@@ -9,11 +9,11 @@ https://crates.io/crates/juggle)
 [![Documentation](https://docs.rs/juggle/badge.svg)](
 https://docs.rs/juggle)
 [![Rust version](https://img.shields.io/badge/Rust-1.46+-blueviolet.svg)](
-https://docs.rs/juggle)
+https://www.rust-lang.org)
 
 Async task switching for
 [cooperative multitasking](https://en.wikipedia.org/wiki/Cooperative_multitasking)
-in single threaded environments.
+in single thread environments with `no_std` support.
 
 This library provides tools to dynamically manage group of tasks in single threaded or embedded
 environments. Note than this is not an operating system but can serve as a simple replacement
