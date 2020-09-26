@@ -68,8 +68,10 @@ fn dummy(_: *const ()) {}
 /// action when waked.
 pub fn func_waker(func_ptr: fn()) -> Waker {
     if mem::size_of::<*const ()>() < mem::size_of::<fn()>() {
-        panic!("Incompatible pointer types."); // to make sure, should be ditched by compiler.
-        //todo add some replacement logic here, maybe allocate arc or sth.
+        // SAFETY: replacement logic in highly unlikely case where function pointers are longer than
+        // data pointers, only available on very exotic platform configurations, should be ditched
+        // by compiler on regular platforms
+        return to_waker(Arc::new(func_ptr)); //here requires allocation
     }
     unsafe fn wake_func(ptr: *const ()) {
         //SAFETY: we know this void pointer points to some function with desired signature.
