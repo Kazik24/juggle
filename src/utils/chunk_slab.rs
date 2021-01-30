@@ -103,6 +103,7 @@ impl<I: ChunkSlabKey, T> ChunkSlab<I, T> {
     }
 
     pub fn len(&self) -> usize { self.len }
+    pub fn capacity(&self) -> usize { self.entries.len() * CHUNK_SIZE }
     pub fn get(&self, key: I) -> Option<&T> {
         match self.entries.get(key.into_index() / CHUNK_SIZE) {
             Some(chunk) => {

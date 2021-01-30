@@ -96,3 +96,41 @@ fn test_starving_bug(){
     assert_eq!(test.wake_count(),1);
     assert_eq!(test.poll_once(),Poll::Ready(Ok(())));
 }
+
+#[test]
+fn test_self_suspend_bug(){
+    let mut test = UnderTest::new();
+    let handle = test.wheel.handle().clone();
+    let id = test.wheel.handle().spawn_default(async move {
+        let curr = handle.current().unwrap();
+        handle.suspend(curr);
+        handle.resume(curr);
+        println!("Spammed");
+        yield_once!();
+        handle.cancel(curr);
+        println!("Cancelled");
+        yield_once!();
+        unreachable!();
+    }).unwrap();
+    test.wheel.handle().spawn_default(Yield::times(100)).unwrap();
+    assert!(test.poll_once().is_ready());
+}
+
+#[test]
+fn test_self_suspend_spam_bug(){
+    let mut test = UnderTest::new();
+    let handle = test.wheel.handle().clone();
+    let id = test.wheel.handle().spawn_default(async move {
+        let curr = handle.current().unwrap();
+        for _ in 0..10 {
+            handle.suspend(curr);
+            handle.resume(curr);
+        }
+        yield_once!();
+        handle.cancel(curr);
+        yield_once!();
+        unreachable!();
+    }).unwrap();
+    test.wheel.handle().spawn_default(Yield::times(100)).unwrap();
+    assert!(test.poll_once().is_ready());
+}

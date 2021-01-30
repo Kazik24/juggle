@@ -6,14 +6,14 @@ use core::fmt::{Debug, Formatter};
 use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
-use crate::round::algorithm::SchedulerAlgorithm;
 use crate::round::dyn_future::{DynamicFuture, TaskName};
+use crate::round::Algorithm;
 
 /// Handle used to spawn and control tasks in assigned [`Wheel`](struct.Wheel.html). All tasks
 /// manipulation are done by this struct.
 #[derive(Clone)]
 pub struct WheelHandle<'futures> {
-    ptr: Weak<SchedulerAlgorithm<'futures>>,
+    ptr: Weak<Algorithm<'futures>>,
 }
 
 /// Represents identifier of task registered by [`WheelHandle`](struct.WheelHandle.html).
@@ -44,8 +44,8 @@ impl Debug for IdNum {
 /// Default parameters will spawn runnable unnamed task.
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct SpawnParams {
-    suspended: bool,
-    name: TaskName,
+    pub(crate) suspended: bool,
+    pub(crate) name: TaskName,
 }
 
 /// Represents state of a task.
@@ -75,7 +75,7 @@ macro_rules! unwrap_weak {
 }
 
 impl<'futures> WheelHandle<'futures> {
-    pub(crate) fn new(ptr: Weak<SchedulerAlgorithm<'futures>>) -> Self { Self { ptr } }
+    pub(crate) fn new(ptr: Weak<Algorithm<'futures>>) -> Self { Self { ptr } }
 
 
     /// Checks if this handle is valid. Handles are weak references bound to specific
@@ -153,9 +153,8 @@ impl<'futures> WheelHandle<'futures> {
     pub fn spawn_dyn<P>(&self, params: P, future: Pin<Box<dyn Future<Output=()> + 'futures>>) -> Option<IdNum>
         where P: Into<SpawnParams>{
         let this = unwrap_weak!(self,None);
-        let params = params.into();
-        let dynamic = DynamicFuture::new(future, this.clone_registry(), params.suspended, params.name);
-        Some(IdNum::from_usize(this.register(dynamic) as usize))
+        let dynamic = DynamicFuture::new(future, this.clone_registry(), params.into());
+        this.register(dynamic).and_then(|v|Some(IdNum::from_usize(v)))
     }
 
     /// Cancel task with given id.

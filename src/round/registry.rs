@@ -72,7 +72,7 @@ impl<'future> Registry<'future>{
         }
     }
     #[inline]
-    pub fn insert(&self,val: DynamicFuture<'future>)->TaskKey{
+    pub fn insert(&self,val: DynamicFuture<'future>)->Option<TaskKey>{
         #[cfg(debug_assertions)]
         if self.iterate_flag.get() != 0 {
             if self.iterate_flag.get() == Self::SENTINEL{
@@ -85,7 +85,7 @@ impl<'future> Registry<'future>{
             //SAFETY: We know that chunk slab wont reallocate or change memory of already
             //borrowed tasks when inserting and we checked if any iterator is present
             let r = &mut *self.slab.get();
-            r.insert(val)
+            Some(r.insert(val))
         }
     }
     #[inline]
@@ -107,6 +107,10 @@ impl<'future> Registry<'future>{
         //operations such as insert or remove are not recursive (with exception for retain which
         //updates count after iterating all tasks).
         unsafe{ (&*self.slab.get()).len() }
+    }
+    #[inline]
+    pub fn capacity(&self)->usize{
+        unsafe{ (&*self.slab.get()).capacity() }
     }
 
     #[cfg(debug_assertions)]

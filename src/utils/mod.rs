@@ -17,6 +17,7 @@ mod cell;
 mod load;
 mod timing;
 mod chunk_slab;
+mod signal;
 
 pub use cell::AtomicCell;
 pub use load::LoadBalance;
@@ -24,6 +25,7 @@ pub use timing::{TimerClock, TimerCount, TimingGroup};
 pub(crate) use chunk_slab::ChunkSlab;
 #[cfg(feature = "std")]
 pub use timing::StdTimerClock;
+use std::mem::{ManuallyDrop, MaybeUninit};
 
 
 /// Implement this trait if you want to create custom waker with [`to_waker`](fn.to_waker.html) function.
@@ -131,6 +133,26 @@ impl AtomicWakerRegistry {
                 true
             }
             None => false,
+        }
+    }
+}
+
+pub(crate) struct DropGuard<F: FnOnce()>{
+    inner: MaybeUninit<F>,
+}
+impl<F: FnOnce()> DropGuard<F>{
+    pub fn new(func: F)->Self{
+        Self{
+            inner: MaybeUninit::new(func),
+        }
+    }
+}
+
+impl<F: FnOnce()> Drop for DropGuard<F>{
+    fn drop(&mut self) {
+        unsafe{
+            let func = self.inner.as_ptr().read();
+            func()
         }
     }
 }

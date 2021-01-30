@@ -4,8 +4,8 @@ use core::fmt::Debug;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::*;
-use crate::round::algorithm::SchedulerAlgorithm;
 use super::handle::*;
+use crate::round::Algorithm;
 
 /// Single-thread async task scheduler with dynamic task state control. Implements `Future`.
 ///
@@ -105,23 +105,23 @@ use super::handle::*;
 /// }
 /// ```
 pub struct Wheel<'futures> {
-    ptr: Rc<SchedulerAlgorithm<'futures>>,
+    ptr: Rc<Algorithm<'futures>>,
     handle: WheelHandle<'futures>,
 }
 
 /// Same as [`Wheel`](struct.Wheel.html) except that it has fixed content and there is no way to
 /// control state of tasks within it. Implements `Future`.
 pub struct LockedWheel<'futures> {
-    alg: SchedulerAlgorithm<'futures>,
+    alg: Algorithm<'futures>,
 }
 
 impl<'futures> Wheel<'futures> {
     /// Create new instance
     pub fn new() -> Self {
-        Self::from_inner(SchedulerAlgorithm::new())
+        Self::from_inner(Algorithm::new())
     }
 
-    fn from_inner(alg: SchedulerAlgorithm<'futures>) -> Self {
+    fn from_inner(alg: Algorithm<'futures>) -> Self {
         let ptr = Rc::new(alg);
         let handle = WheelHandle::new(Rc::downgrade(&ptr));
         Self { ptr, handle }

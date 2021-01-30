@@ -7,6 +7,7 @@ use core::pin::Pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::*;
 use crate::utils::{AtomicWakerRegistry, DynamicWake, to_waker};
+use crate::SpawnParams;
 
 pub(crate) struct DynamicFuture<'a> {
     //not send not sync
@@ -33,15 +34,18 @@ impl TaskName {
         }
     }
 }
+#[repr(u8)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum StopState{ Suspended,Cancelled } //replace bool flags
 
 impl<'a> DynamicFuture<'a> {
     pub fn new(future: Pin<Box<dyn Future<Output=()> + 'a>>, global: Arc<AtomicWakerRegistry>,
-               suspended: bool, name: TaskName) -> Self {
+               params: SpawnParams) -> Self {
         Self {
             pinned_future: UnsafeCell::new(future),
             flags: SyncFlags::new(global),
-            name,
-            suspended: Cell::new(suspended),
+            name: params.name,
+            suspended: Cell::new(params.suspended),
             cancelled: Cell::new(false),
             polling: Cell::new(false),
         }
@@ -49,7 +53,7 @@ impl<'a> DynamicFuture<'a> {
     pub fn get_name(&self) -> &TaskName { &self.name }
     pub fn set_suspended(&self, val: bool) { self.suspended.set(val); }
     pub fn is_suspended(&self) -> bool { self.suspended.get() }
-    pub fn set_cancelled(&self, val: bool) { self.cancelled.set(val); }
+    pub fn cancel(&self) { self.cancelled.set(true); }
     pub fn is_cancelled(&self) -> bool { self.cancelled.get() }
     pub fn is_runnable(&self) -> bool { self.flags.is_runnable() }
     pub fn poll_local(&self) -> Poll<()> {

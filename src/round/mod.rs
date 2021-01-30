@@ -3,12 +3,19 @@ mod algorithm;
 mod wheel;
 mod handle;
 mod registry;
+mod storage;
+mod stat;
+mod unordered_algorithm;
 
 pub use self::handle::{IdNum, SpawnParams, State, WheelHandle};
 pub use self::wheel::{LockedWheel, SuspendError, Wheel};
 
 use core::cell::*;
 use core::ops::{Deref, DerefMut};
+use crate::round::unordered_algorithm::UnorderedAlgorithm;
+
+// main algorithm for scheduling in Wheel
+pub(crate) type Algorithm<'a> = UnorderedAlgorithm<'a>;
 
 /// UnsafeCell wrapper.
 /// SAFETY: Intended only to use inside this crate.

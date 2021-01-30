@@ -61,14 +61,16 @@ impl<'futures> SchedulerAlgorithm<'futures> {
     }
     pub(crate) fn clone_registry(&self) -> Arc<AtomicWakerRegistry> { self.ctrl.last_waker.clone() }
     //safe to call from inside task because chunkslab never moves futures.
-    pub(crate) fn register(&self, dynamic: DynamicFuture<'futures>) -> TaskKey {
+    pub(crate) fn register(&self, dynamic: DynamicFuture<'futures>) -> Option<TaskKey> {
         let suspended = dynamic.is_suspended();
         let key = self.ctrl.registry.insert(dynamic); //won't realloc other futures because it uses ChunkSlab
-        if suspended {
-            //increase count cause added task was suspended
-            self.ctrl.inc_suspended();
-        } else {
-            self.enqueue_runnable(key, false); //first ever enqueue of this task
+        if let Some(key) = key {
+            if suspended {
+                //increase count cause added task was suspended
+                self.ctrl.inc_suspended();
+            } else {
+                self.enqueue_runnable(key, false); //first ever enqueue of this task
+            }
         }
         key
     }
@@ -79,7 +81,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
                 task.set_suspended(false);
                 self.ctrl.dec_suspended();
 
-                if task.is_runnable() {
+                if task.is_runnable() || self.ctrl.current.get() == Some(key) {
                     // Check if absent is needed cause some task might spam suspend-resume
                     // which will otherwise cause multiple enqueues.
                     self.enqueue_runnable(key, true);
@@ -133,7 +135,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
     pub(crate) fn cancel(&self, key: TaskKey) -> bool {
         match self.ctrl.registry.get(key) {
             Some(task) if !task.is_cancelled() => {
-                task.set_cancelled(true);
+                task.cancel();
                 if task.is_suspended() {
                     task.set_suspended(false);
                     self.ctrl.dec_suspended();
@@ -287,16 +289,34 @@ impl Control<'_> {
     }
 
     #[inline]
-    fn pop_front_queue(queue: &Ucw<VecDeque<TaskKey>>) -> Option<TaskKey>{
-        queue.borrow_mut().pop_front() //separate fn to drop borrow
+    fn peek_front_queue(queue: &Ucw<VecDeque<TaskKey>>) -> Option<TaskKey>{
+        queue.borrow().front().copied() //separate fn to drop borrow
     }
     #[inline]
     fn rotate_once(&self, from: &Ucw<VecDeque<TaskKey>>, to: &Ucw<VecDeque<TaskKey>>) {
-        struct Guard<'a>(&'a Cell<Option<TaskKey>>);
-        impl<'a> Drop for Guard<'a> { fn drop(&mut self) { self.0.set(None); } }
+        struct Guard<'a>(&'a Cell<Option<TaskKey>>,TaskKey,&'a Ucw<VecDeque<TaskKey>>,&'a Ucw<VecDeque<TaskKey>>);
+        impl<'a> Drop for Guard<'a> {
+            fn drop(&mut self) {
+                self.0.set(None);
+                let mut from = self.2.borrow_mut();
+                match from.front() { //remove from queue only if it wasn't removed inside task
+                    Some(&key) if key == self.1 => {
+                        from.pop_front(); //regular pop, key is in the same place
+                    }
+                    _ => {
+                        //need to scan 'to' queue to find if task was re-added
+                        drop(from);
+                        let mut to = self.3.borrow_mut();
+                        if let Some(index) = to.iter().position(|&k|k == self.1){
+                            to.remove(index);
+                        }
+                    }
+                }
+            }
+        }
 
-        while let Some(run_key) = Self::pop_front_queue(from) {
-            let run_task = self.registry.get(run_key).unwrap();
+        while let Some(run_key) = Self::peek_front_queue(from) {
+            let run_task = self.registry.get(run_key).expect("Internal Error: unknown task in queue.");
             if run_task.is_cancelled() {
                 drop(run_task);//clear last borrow
                 self.registry.remove(run_key).expect("Internal Error: task not found.");
@@ -307,7 +327,7 @@ impl Control<'_> {
             }
 
             self.current.set(Some(run_key));
-            let guard = Guard(&self.current);
+            let guard = Guard(&self.current,run_key,from,to);
             // be careful with interior mutability types here cause 'poll_local' can invoke any method
             // on handle, 'from' queue shouldn't be edited by handles (this is not enforced) and
             // registry is now in borrowed state so nothing can be 'remove'd from it.
