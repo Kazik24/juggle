@@ -101,7 +101,7 @@ fn test_starving_bug(){
 fn test_self_suspend_bug(){
     let mut test = UnderTest::new();
     let handle = test.wheel.handle().clone();
-    let id = test.wheel.handle().spawn_default(async move {
+    test.wheel.handle().spawn_default(async move {
         let curr = handle.current().unwrap();
         handle.suspend(curr);
         handle.resume(curr);
@@ -120,7 +120,7 @@ fn test_self_suspend_bug(){
 fn test_self_suspend_spam_bug(){
     let mut test = UnderTest::new();
     let handle = test.wheel.handle().clone();
-    let id = test.wheel.handle().spawn_default(async move {
+    test.wheel.handle().spawn_default(async move {
         let curr = handle.current().unwrap();
         for _ in 0..10 {
             handle.suspend(curr);

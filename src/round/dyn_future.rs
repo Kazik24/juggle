@@ -6,16 +6,16 @@ use core::ops::Deref;
 use core::pin::Pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::*;
-use crate::utils::{AtomicWakerRegistry, DynamicWake, to_waker};
+use crate::utils::{AtomicWakerRegistry, DynamicWake, to_waker, DropGuard};
 use crate::SpawnParams;
+use crate::round::stat::{TaskWrapper, StopReason};
 
 pub(crate) struct DynamicFuture<'a> {
     //not send not sync
     pinned_future: UnsafeCell<Pin<Box<dyn Future<Output=()> + 'a>>>,
     flags: SyncFlags,
     name: TaskName,
-    suspended: Cell<bool>,
-    cancelled: Cell<bool>,
+    stop_reason: Cell<StopReason>,
     polling: Cell<bool>,
 }
 
@@ -34,9 +34,6 @@ impl TaskName {
         }
     }
 }
-#[repr(u8)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum StopState{ Suspended,Cancelled } //replace bool flags
 
 impl<'a> DynamicFuture<'a> {
     pub fn new(future: Pin<Box<dyn Future<Output=()> + 'a>>, global: Arc<AtomicWakerRegistry>,
@@ -45,28 +42,23 @@ impl<'a> DynamicFuture<'a> {
             pinned_future: UnsafeCell::new(future),
             flags: SyncFlags::new(global),
             name: params.name,
-            suspended: Cell::new(params.suspended),
-            cancelled: Cell::new(false),
+            stop_reason: Cell::new(if params.suspended {StopReason::Suspended} else {StopReason::None}),
             polling: Cell::new(false),
         }
     }
-    pub fn get_name(&self) -> &TaskName { &self.name }
-    pub fn set_suspended(&self, val: bool) { self.suspended.set(val); }
-    pub fn is_suspended(&self) -> bool { self.suspended.get() }
-    pub fn cancel(&self) { self.cancelled.set(true); }
-    pub fn is_cancelled(&self) -> bool { self.cancelled.get() }
-    pub fn is_runnable(&self) -> bool { self.flags.is_runnable() }
-    pub fn poll_local(&self) -> Poll<()> {
+}
+
+impl<'a> TaskWrapper for DynamicFuture<'a>{
+    fn get_name(&self) -> &TaskName { &self.name }
+    fn get_stop_reason(&self) -> StopReason { self.stop_reason.get() }
+    fn set_stop_reason(&self, val: StopReason) { self.stop_reason.set(val); }
+    fn is_runnable(&self) -> bool { self.flags.is_runnable() }
+    fn poll_local(&self) -> Poll<()> {
         //SAFETY: guard against undefined behavior of borrowing UnsafeCell mutably twice.
         if self.polling.replace(true) {
             panic!("Recursive call to DynamicFuture::poll_local is not allowed.");
         }
-        struct Guard<'a>(&'a Cell<bool>);
-        impl Drop for Guard<'_>{
-            //SAFETY: unlock so that poll_local can be called again.
-            fn drop(&mut self) { self.0.set(false); }
-        }
-        let guard = Guard(&self.polling); //SAFETY: construct guard
+        let guard = DropGuard::new(||self.polling.set(false)); //SAFETY: construct guard
 
         //store false cause if it became true before this operation then polling can be done
         //if it becomes true after this operation but before poll then this also means that polling can be done

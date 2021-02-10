@@ -11,12 +11,13 @@ use crate::round::handle::State;
 use crate::round::registry::Registry;
 use crate::round::Ucw;
 use crate::utils::{AtomicWakerRegistry, DropGuard};
+use crate::round::stat::{TaskWrapper, StopReason, TaskRegistry};
 
 pub(crate) type TaskKey = usize;
 
 
-pub(crate) struct UnorderedAlgorithm<'futures>{
-    registry: Registry<'futures>,
+pub(crate) struct UnorderedAlgorithm<R: TaskRegistry<TaskKey>> where R::Task: TaskWrapper {
+    registry: R,
     last_waker: Arc<AtomicWakerRegistry>,
     current: Cell<Option<TaskKey>>,
     suspended_count: Cell<usize>,
@@ -24,10 +25,13 @@ pub(crate) struct UnorderedAlgorithm<'futures>{
 #[repr(u8)]
 enum Rotate { Wait, Continue }
 
-impl<'futures> UnorderedAlgorithm<'futures>{
-    pub(crate) fn new() -> Self {
+impl<R: TaskRegistry<TaskKey> + Default> UnorderedAlgorithm<R> where R::Task: TaskWrapper {
+    pub(crate) fn new() -> Self { Self::with(R::default()) }
+}
+impl<R: TaskRegistry<TaskKey>> UnorderedAlgorithm<R> where R::Task: TaskWrapper {
+    pub(crate) fn with(registry: R) -> Self {
         Self {
-            registry: Registry::new(),
+            registry,
             last_waker: Arc::new(AtomicWakerRegistry::empty()),
             suspended_count: Cell::new(0),
             current: Cell::new(None),
@@ -37,8 +41,8 @@ impl<'futures> UnorderedAlgorithm<'futures>{
     pub(crate) fn clone_registry(&self) -> Arc<AtomicWakerRegistry> { self.last_waker.clone() }
     fn inc_suspended(&self) { self.suspended_count.set(self.suspended_count.get() + 1) }
     fn dec_suspended(&self) { self.suspended_count.set(self.suspended_count.get() - 1) }
-    pub(crate) fn register(&self, dynamic: DynamicFuture<'futures>) -> Option<TaskKey> {
-        let suspended = dynamic.is_suspended();
+    pub(crate) fn register(&self, dynamic: R::Task) -> Option<TaskKey> {
+        let suspended = dynamic.get_stop_reason() == StopReason::Suspended;
         let key = self.registry.insert(dynamic); //won't realloc other futures because it uses ChunkSlab
         if suspended && key.is_some() {
             //increase count cause added task was suspended
@@ -50,8 +54,8 @@ impl<'futures> UnorderedAlgorithm<'futures>{
     //safe to call from inside task
     pub(crate) fn resume(&self, key: TaskKey) -> bool {
         match self.registry.get(key) {
-            Some(task) if task.is_suspended() && !task.is_cancelled() => {
-                task.set_suspended(false);
+            Some(task) if task.get_stop_reason() == StopReason::Suspended => {
+                task.set_stop_reason(StopReason::None);
                 self.dec_suspended();
                 true
             }
@@ -62,8 +66,8 @@ impl<'futures> UnorderedAlgorithm<'futures>{
     //if rotate_once encounters suspended task, then it will be removed from queue
     pub(crate) fn suspend(&self, key: TaskKey) -> bool {
         match self.registry.get(key) {
-            Some(task) if !task.is_suspended() && !task.is_cancelled() => {
-                task.set_suspended(true);
+            Some(task) if task.get_stop_reason() == StopReason::None => {
+                task.set_stop_reason(StopReason::Suspended);
                 self.inc_suspended();
                 true
             }
@@ -73,11 +77,13 @@ impl<'futures> UnorderedAlgorithm<'futures>{
 
     pub(crate) fn get_state(&self, key: TaskKey) -> State {
         match self.registry.get(key) {
-            Some(task) => {
-                if task.is_cancelled() { State::Cancelled }
-                else if task.is_suspended() { State::Suspended }
-                else if task.is_runnable() { State::Runnable }
-                else { State::Waiting }
+            Some(task) => match task.get_stop_reason() {
+                StopReason::Cancelled => State::Cancelled,
+                StopReason::Suspended => State::Suspended,
+                _ => {
+                    if task.is_runnable() { State::Runnable }
+                    else { State::Waiting }
+                }
             }
             None => State::Unknown,
         }
@@ -85,23 +91,26 @@ impl<'futures> UnorderedAlgorithm<'futures>{
 
     //if rotate_once encounters cancelled task, then it will be removed from queue and registry
     pub(crate) fn cancel(&self, key: TaskKey) -> bool {
-        match self.registry.get(key) {
-            Some(task) if !task.is_cancelled() => {
-                task.cancel();
-                if task.is_suspended() {
-                    task.set_suspended(false);
+        if let Some(task) = self.registry.get(key) {
+            let r = task.get_stop_reason();
+            if r != StopReason::Cancelled {
+                task.set_stop_reason(StopReason::Cancelled);
+                if r == StopReason::Suspended {
                     self.dec_suspended();
                 }
-                true
+                return true;
             }
-            _ => false,
         }
+        false
     }
 
     pub(crate) fn get_by_name(&self, name: &str) -> Option<TaskKey> {
-        for (k, v) in self.registry.iter() {
-            match v.get_name().as_str() {
-                Some(n) if n == name => return Some(k),
+        for k in 0..self.registry.capacity() {
+            match self.registry.get(k) {
+                Some(v) => match v.get_name().as_str() {
+                    Some(n) if n == name => return Some(k),
+                    _ => {}
+                }
                 _ => {}
             }
         }
@@ -118,12 +127,12 @@ impl<'futures> UnorderedAlgorithm<'futures>{
     }
 
     pub(crate) fn format_internal(&self, f: &mut Formatter<'_>, name: &str) -> Result {
-        pub(crate) struct DebugTask<'a, 'b>(
-            &'a Registry<'b>,
+        pub(crate) struct DebugTask<'a,R>(
+            &'a R,
             Option<TaskKey>,
         );
 
-        impl<'a, 'b> Debug for DebugTask<'a, 'b> {
+        impl<'a,R: TaskRegistry<TaskKey>> Debug for DebugTask<'a,R> where R::Task: TaskWrapper {
             fn fmt(&self, f: &mut Formatter<'_>) -> Result {
                 match self.1 {
                     Some(id) => {
@@ -219,12 +228,15 @@ impl<'futures> UnorderedAlgorithm<'futures>{
             let run_task = match self.registry.get(run_key){
                 Some(k) => k, None => continue,
             };
-            if run_task.is_cancelled() {
-                drop(run_task);//clear last borrow
-                self.registry.remove(run_key).expect("Internal Error: task not found.");
-                continue;
+            let reason = run_task.get_stop_reason();
+            if !reason.is_poll_allowed() {
+                if reason == StopReason::Cancelled {
+                    drop(run_task);//clear last borrow
+                    self.registry.remove(run_key).expect("Internal Error: task not found.");
+                }
+                continue; //remove from queue
             }
-            if run_task.is_suspended() || !run_task.is_runnable() {
+            if !run_task.is_runnable() {
                 continue; // next task
             }
             self.current.set(Some(run_key));

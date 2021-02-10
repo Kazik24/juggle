@@ -11,6 +11,7 @@ use crate::round::handle::State;
 use crate::round::registry::Registry;
 use crate::round::Ucw;
 use crate::utils::AtomicWakerRegistry;
+use crate::round::stat::{TaskWrapper, StopReason, TaskRegistry};
 
 pub(crate) type TaskKey = usize;
 
@@ -62,7 +63,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
     pub(crate) fn clone_registry(&self) -> Arc<AtomicWakerRegistry> { self.ctrl.last_waker.clone() }
     //safe to call from inside task because chunkslab never moves futures.
     pub(crate) fn register(&self, dynamic: DynamicFuture<'futures>) -> Option<TaskKey> {
-        let suspended = dynamic.is_suspended();
+        let suspended = dynamic.get_stop_reason() == StopReason::Suspended;
         let key = self.ctrl.registry.insert(dynamic); //won't realloc other futures because it uses ChunkSlab
         if let Some(key) = key {
             if suspended {
@@ -77,8 +78,8 @@ impl<'futures> SchedulerAlgorithm<'futures> {
     //safe to call from inside task
     pub(crate) fn resume(&self, key: TaskKey) -> bool {
         match self.ctrl.registry.get(key) {
-            Some(task) if task.is_suspended() && !task.is_cancelled() => {
-                task.set_suspended(false);
+            Some(task) if task.get_stop_reason() == StopReason::Suspended => {
+                task.set_stop_reason(StopReason::None);
                 self.ctrl.dec_suspended();
 
                 if task.is_runnable() || self.ctrl.current.get() == Some(key) {
@@ -101,8 +102,8 @@ impl<'futures> SchedulerAlgorithm<'futures> {
     //if rotate_once encounters suspended task, then it will be removed from queue
     pub(crate) fn suspend(&self, key: TaskKey) -> bool {
         match self.ctrl.registry.get(key) {
-            Some(task) if !task.is_suspended() && !task.is_cancelled() => {
-                task.set_suspended(true);
+            Some(task) if task.get_stop_reason() == StopReason::None => {
+                task.set_stop_reason(StopReason::Suspended);
                 self.ctrl.inc_suspended();
                 //optimistic check, if is runnable then for sure will be removed from deferred
                 //in next iteration
@@ -121,11 +122,13 @@ impl<'futures> SchedulerAlgorithm<'futures> {
 
     pub(crate) fn get_state(&self, key: TaskKey) -> State {
         match self.ctrl.registry.get(key) {
-            Some(task) => {
-                if task.is_cancelled() { State::Cancelled }
-                else if task.is_suspended() { State::Suspended }
-                else if task.is_runnable() { State::Runnable }
-                else { State::Waiting }
+            Some(task) => match task.get_stop_reason() {
+                StopReason::Cancelled => State::Cancelled,
+                StopReason::Suspended => State::Suspended,
+                _ => {
+                    if task.is_runnable() { State::Runnable }
+                    else { State::Waiting }
+                }
             }
             None => State::Unknown,
         }
@@ -134,14 +137,16 @@ impl<'futures> SchedulerAlgorithm<'futures> {
     //if rotate_once encounters cancelled task, then it will be removed from queue and registry
     pub(crate) fn cancel(&self, key: TaskKey) -> bool {
         match self.ctrl.registry.get(key) {
-            Some(task) if !task.is_cancelled() => {
-                task.cancel();
-                if task.is_suspended() {
-                    task.set_suspended(false);
-                    self.ctrl.dec_suspended();
-                    self.ctrl.scan_registry.set(true);
-                }
-                true
+            Some(task) => {
+                let r = task.get_stop_reason();
+                if r != StopReason::Cancelled {
+                    task.set_stop_reason(StopReason::Cancelled);
+                    if r == StopReason::Suspended {
+                        self.ctrl.dec_suspended();
+                        self.ctrl.scan_registry.set(true);
+                    }
+                    true
+                } else { false }
             }
             _ => false,
         }
@@ -224,7 +229,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
                 let mut buff = self.0.ctrl.registry.iter().map(|(k, _)| DebugTask(&self.0.ctrl.registry, Some(k)))
                     .filter(|t| {
                         match t.1.and_then(|id| t.0.get(id)) {
-                            Some(task) => task.is_suspended(),
+                            Some(task) => task.get_stop_reason() == StopReason::Suspended,
                             None => false,
                         }
                     });
@@ -317,13 +322,13 @@ impl Control<'_> {
 
         while let Some(run_key) = Self::peek_front_queue(from) {
             let run_task = self.registry.get(run_key).expect("Internal Error: unknown task in queue.");
-            if run_task.is_cancelled() {
-                drop(run_task);//clear last borrow
-                self.registry.remove(run_key).expect("Internal Error: task not found.");
-                continue; //remove from queue and registry
-            }
-            if run_task.is_suspended() {
-                continue; // remove from queue
+            let reason = run_task.get_stop_reason();
+            if reason != StopReason::None {
+                if reason == StopReason::Cancelled {
+                    drop(run_task);//clear last borrow
+                    self.registry.remove(run_key).expect("Internal Error: task not found.");
+                }
+                continue; //remove from queue
             }
 
             self.current.set(Some(run_key));
@@ -334,10 +339,10 @@ impl Control<'_> {
             let is_ready = run_task.poll_local().is_ready(); //run user code
             drop(guard);
 
-            if is_ready || run_task.is_cancelled() { //task was finished or cancelled, remove from scheduler
+            if is_ready || run_task.get_stop_reason() == StopReason::Cancelled { //task was finished or cancelled, remove from scheduler
                 drop(run_task); //must be dropped!
                 self.registry.remove(run_key).expect("Internal Error: task not found.");
-            } else if !run_task.is_suspended() { //reconsider enqueuing this future again
+            } else if run_task.get_stop_reason() != StopReason::Suspended { //reconsider enqueuing this future again
                 if run_task.is_runnable() { //if immediately became runnable then enqueue it
                     to.borrow_mut().push_back(run_key);
                 } else { //put it on deferred queue
@@ -350,9 +355,9 @@ impl Control<'_> {
             //todo make this more efficient
             //from queue is now empty
             //but to queue must be checked if it contains any cancelled tasks
-            to.borrow_mut().retain(|&key| !self.registry.get(key).unwrap().is_cancelled());
+            to.borrow_mut().retain(|&key| self.registry.get(key).unwrap().get_stop_reason() != StopReason::Cancelled);
             //now registry can be cleared
-            self.registry.retain(|_,v| !v.is_cancelled());
+            self.registry.retain(|_,v| v.get_stop_reason() != StopReason::Cancelled);
         }
     }
 
@@ -361,8 +366,8 @@ impl Control<'_> {
         let prev = from.len();
         from.retain(|&elem| {
             let task = registry.get(elem).unwrap();
-            if task.is_suspended() { return false; }
-            if task.is_cancelled() {
+            if task.get_stop_reason() == StopReason::Suspended { return false; }
+            if task.get_stop_reason() == StopReason::Cancelled {
                 drop(task);
                 registry.remove(elem).expect("Internal Error: task not found.");
                 return false;

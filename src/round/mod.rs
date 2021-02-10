@@ -13,9 +13,10 @@ pub use self::wheel::{LockedWheel, SuspendError, Wheel};
 use core::cell::*;
 use core::ops::{Deref, DerefMut};
 use crate::round::unordered_algorithm::UnorderedAlgorithm;
+use crate::round::registry::Registry;
 
 // main algorithm for scheduling in Wheel
-pub(crate) type Algorithm<'a> = UnorderedAlgorithm<'a>;
+pub(crate) type Algorithm<'a> = UnorderedAlgorithm<Registry<'a>>;
 
 /// UnsafeCell wrapper.
 /// SAFETY: Intended only to use inside this crate.
