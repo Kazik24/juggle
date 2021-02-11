@@ -1,10 +1,10 @@
-mod dyn_future;
+pub(crate) mod dyn_future;
 mod algorithm;
 mod wheel;
 mod handle;
 mod registry;
 mod storage;
-mod stat;
+pub(crate) mod stat;
 mod unordered_algorithm;
 
 pub use self::handle::{IdNum, SpawnParams, State, WheelHandle};

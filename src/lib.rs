@@ -79,6 +79,7 @@ extern crate alloc;
 
 pub mod utils;
 mod round;
+mod static_round;
 mod yield_helper;
 mod block;
 
