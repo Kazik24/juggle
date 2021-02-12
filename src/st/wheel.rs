@@ -1,5 +1,5 @@
 use std::future::Future;
-use crate::SuspendError;
+use crate::dy::SuspendError;
 use std::marker::PhantomData;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -7,7 +7,7 @@ use std::convert::identity;
 use std::ops::Not;
 use std::thread::spawn;
 
-type StaticAlgorithm = crate::static_round::algorithm::StaticAlgorithm;
+type StaticAlgorithm = crate::st::algorithm::StaticAlgorithm;
 
 #[derive(Copy,Clone)]
 #[repr(transparent)]
@@ -56,7 +56,7 @@ impl StaticWheel{
 mod tests{
     use super::*;
     use std::mem::MaybeUninit;
-    use crate::static_round::stt_future::StaticFuture;
+    use crate::st::stt_future::StaticFuture;
 
     fn _test_sth(){
         let wheel = Box::new(StaticWheelDef{lock: AtomicBool::new(false),algorithm:

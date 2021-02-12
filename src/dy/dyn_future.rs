@@ -7,8 +7,8 @@ use core::pin::Pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::*;
 use crate::utils::{AtomicWakerRegistry, DynamicWake, to_waker, DropGuard};
-use crate::SpawnParams;
-use crate::round::stat::{TaskWrapper, StopReason};
+use crate::dy::SpawnParams;
+use crate::dy::stat::{TaskWrapper, StopReason};
 
 pub(crate) struct DynamicFuture<'a> {
     //not send not sync

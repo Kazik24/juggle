@@ -1,6 +1,6 @@
 use core::future::Future;
 use core::pin::Pin;
-use core::sync::atomic::spin_loop_hint;
+use core::hint::spin_loop;
 use core::task::{Context, Poll, Waker};
 use crate::utils::noop_waker;
 
@@ -9,7 +9,7 @@ use crate::utils::noop_waker;
 /// Usefull for creating main loop on embedded systems. This function simply polls given future until it is ready.
 /// Waker used in polling is no-op, when future yields then it is polled again (with `spin_loop_hint` optimization).
 ///
-/// Equivalent to `block_on(future, || spin_loop_hint(), &noop_waker())`.
+/// Equivalent to `block_on(future, || spin_loop(), &noop_waker())`.
 /// # Examples
 /// ```
 /// use juggle::*;
@@ -22,7 +22,7 @@ use crate::utils::noop_waker;
 /// ```
 /// ```
 /// # #[macro_use]
-/// use juggle::*;
+/// use juggle::{*, dy::*};
 /// # fn do_some_processing(){}
 ///
 /// let wheel = Wheel::new();
@@ -43,7 +43,7 @@ use crate::utils::noop_waker;
 /// spin_block_on(wheel).unwrap();
 /// ```
 pub fn spin_block_on<F>(future: F) -> F::Output where F: Future {
-    block_on(future, || spin_loop_hint(), &noop_waker())
+    block_on(future, || spin_loop(), &noop_waker())
 }
 
 /// Utility for blocking on future with custom waker and pending action.

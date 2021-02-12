@@ -1,22 +1,6 @@
-pub(crate) mod dyn_future;
-pub(crate) mod algorithm;
-mod wheel;
-mod handle;
-mod registry;
-mod storage;
-pub(crate) mod stat;
-mod unordered_algorithm;
-
-pub use self::handle::{IdNum, SpawnParams, State, WheelHandle};
-pub use self::wheel::{LockedWheel, SuspendError, Wheel};
 
 use core::cell::*;
 use core::ops::{Deref, DerefMut};
-use crate::round::unordered_algorithm::UnorderedAlgorithm;
-use crate::round::registry::Registry;
-
-// main algorithm for scheduling in Wheel
-pub(crate) type Algorithm<'a> = UnorderedAlgorithm<Registry<'a>>;
 
 /// UnsafeCell wrapper.
 /// SAFETY: Intended only to use inside this crate.
@@ -85,5 +69,3 @@ impl<T> Ucw<T>{
         }
     }
 }
-
-

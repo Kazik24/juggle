@@ -78,7 +78,7 @@ mod tests{
     use core::task::{Poll, Context};
     use std::mem::MaybeUninit;
     use crate::utils::DropGuard;
-    use crate::static_round::wheel::StaticHandle;
+    use crate::st::wheel::StaticHandle;
 
     //todo this is only temporary prove of concept code, I know it has unsafe
     struct PtrWrapper<F>(unsafe fn(StaticHandle,&mut Context<'_>,bool)->Poll<()>,F);

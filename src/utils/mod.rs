@@ -18,14 +18,17 @@ mod load;
 mod timing;
 mod chunk_slab;
 mod signal;
+mod ucw;
 
 pub use cell::AtomicCell;
 pub use load::LoadBalance;
 pub use timing::{TimerClock, TimerCount, TimingGroup};
-pub(crate) use chunk_slab::ChunkSlab;
 #[cfg(feature = "std")]
 pub use timing::StdTimerClock;
 use std::mem::{ManuallyDrop, MaybeUninit};
+
+pub(crate) use chunk_slab::ChunkSlab;
+pub(crate) use ucw::Ucw;
 
 
 /// Implement this trait if you want to create custom waker with [`to_waker`](fn.to_waker.html) function.
@@ -84,7 +87,8 @@ pub fn func_waker(func_ptr: fn()) -> Waker {
     //dummy drop impl, as function pointers doesn't need to be dropped.
     static TABLE: RawWakerVTable = RawWakerVTable::new(clone_func, wake_func, wake_func, dummy);
     //SAFETY: cast function to void pointer, safe to create waker.
-    unsafe { Waker::from_raw(RawWaker::new(func_ptr as *const (), &TABLE)) }
+    //VTABLE is constant, using clone_func reduces chance of making 2 copies in static memory
+    unsafe { Waker::from_raw(clone_func(func_ptr as *const ())) }
 }
 
 /// Convert static reference to type implementing [`DynamicWake`](trait.DynamicWake.html)
@@ -101,16 +105,17 @@ pub fn to_static_waker<T: DynamicWake + Send + Sync + 'static>(wake: &'static T)
             Self::waker_wake,
             dummy,
         );
-        //SAFETY: ptr always contains valid Arc<T>
+        //SAFETY: ptr is always &'static T
         unsafe fn waker_clone(ptr: *const ()) -> RawWaker {
             RawWaker::new(ptr, &Self::VTABLE)
         }
-        //SAFETY: ptr always contains valid Arc<T>
+        //SAFETY: ptr is always &'static T
         unsafe fn waker_wake(ptr: *const ()) {
             (*(ptr as *const T)).wake();
         }
     }
-    unsafe { Waker::from_raw(RawWaker::new(wake as *const T as *const (), &Helper::<T>::VTABLE)) }
+    //VTABLE is constant, using waker_clone reduces chance of making 2 copies in static memory
+    unsafe { Waker::from_raw(Helper::<T>::waker_clone(wake as *const T as *const ())) }
 }
 
 struct Helper<T>(T);

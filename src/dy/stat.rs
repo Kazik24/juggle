@@ -1,6 +1,6 @@
 use core::task::Poll;
-use crate::round::dyn_future::TaskName;
-use crate::round::registry::{Registry, BorrowRef};
+use crate::dy::dyn_future::TaskName;
+use crate::dy::registry::{Registry, BorrowRef};
 
 pub(crate) trait TaskRegistry<K: Copy>{ //generalize registry so that it can hold fixed or dynamic futures
     type Task;

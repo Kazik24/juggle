@@ -16,7 +16,7 @@
 //! Simple program that reads data from sensor and processes it.
 //! ```
 //! # extern crate alloc;
-//! use juggle::*;
+//! use juggle::{*, dy::*};
 //! use alloc::collections::VecDeque;
 //! use core::cell::RefCell;
 //!
@@ -78,13 +78,12 @@
 extern crate alloc;
 
 pub mod utils;
-mod round;
-mod static_round;
+pub mod dy;
+pub mod st;
 mod yield_helper;
 mod block;
 
 pub use self::block::{block_on, spin_block_on};
-pub use self::round::{IdNum, LockedWheel, SpawnParams, State, SuspendError, Wheel, WheelHandle};
 pub use self::yield_helper::{Yield, YieldTimes, YieldWhile};
 
 

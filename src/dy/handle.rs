@@ -6,8 +6,8 @@ use core::fmt::{Debug, Formatter};
 use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
-use crate::round::dyn_future::{DynamicFuture, TaskName};
-use crate::round::Algorithm;
+use crate::dy::dyn_future::{DynamicFuture, TaskName};
+use crate::dy::Algorithm;
 
 /// Handle used to spawn and control tasks in assigned [`Wheel`](struct.Wheel.html). All tasks
 /// manipulation are done by this struct.
@@ -88,7 +88,7 @@ impl<'futures> WheelHandle<'futures> {
     ///
     /// # Examples
     /// ```
-    /// use juggle::*;
+    /// use juggle::{*, dy::*};
     /// let wheel = Wheel::new();
     /// let handle = wheel.handle().clone();
     ///
@@ -101,7 +101,7 @@ impl<'futures> WheelHandle<'futures> {
     /// Checks if this and other handle reference the same [`Wheel`](struct.Wheel.html).
     /// # Examples
     /// ```
-    /// use juggle::*;
+    /// use juggle::{*, dy::*};
     /// let wheel = Wheel::new();
     /// let wheel2 = Wheel::new();
     ///
@@ -193,7 +193,7 @@ impl<'futures> WheelHandle<'futures> {
     ///
     /// # Examples
     /// ```
-    /// use juggle::*;
+    /// use juggle::{*, dy::*};
     ///
     /// let wheel = Wheel::new();
     /// let id1 = wheel.handle().spawn(SpawnParams::default(),async {/*...*/}).unwrap();
@@ -214,7 +214,7 @@ impl<'futures> WheelHandle<'futures> {
     ///
     /// # Examples
     /// ```
-    /// use juggle::*;
+    /// use juggle::{*, dy::*};
     ///
     /// async fn self_cancelling_task(handle: WheelHandle<'_>){
     ///     let id = handle.current().unwrap();
@@ -243,7 +243,7 @@ impl<'futures> WheelHandle<'futures> {
     ///
     /// # Examples
     /// ```
-    /// use juggle::*;
+    /// use juggle::{*, dy::*};
     ///
     /// let wheel = Wheel::new();
     /// let bark = wheel.handle().spawn(SpawnParams::named("Dog"), async {/*...*/}).unwrap();

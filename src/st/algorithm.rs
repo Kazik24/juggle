@@ -1,10 +1,9 @@
 use std::ops::Index;
-use crate::static_round::stt_future::StaticFuture;
+use crate::st::stt_future::StaticFuture;
 use std::cell::Cell;
-use crate::utils::AtomicWakerRegistry;
-use crate::round::algorithm::TaskKey;
-use crate::round::Ucw;
-use crate::round::stat::StopReason;
+use crate::utils::{AtomicWakerRegistry, Ucw};
+use crate::dy::algorithm::TaskKey;
+use crate::dy::stat::StopReason;
 
 
 const N:usize = 2;
@@ -35,5 +34,7 @@ impl StaticAlgorithm{
         }
         self.suspended_count.set(suspended);
     }
-
+    pub(crate) fn get_current(&self) -> Option<TaskKey> { self.current.get() }
+    fn inc_suspended(&self) { self.suspended_count.set(self.suspended_count.get() + 1) }
+    fn dec_suspended(&self) { self.suspended_count.set(self.suspended_count.get() - 1) }
 }

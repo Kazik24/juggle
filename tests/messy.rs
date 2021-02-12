@@ -2,6 +2,7 @@
 
 mod common;
 pub use common::*;
+use juggle::dy::*;
 use juggle::*;
 use rand::prelude::StdRng;
 use rand::*;

@@ -3,8 +3,7 @@ use core::fmt::{Debug, Formatter};
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
-use crate::utils::{TimerClock, TimingGroup};
-use crate::round::Ucw;
+use crate::utils::{TimerClock, TimingGroup, Ucw};
 
 /// Helper for equally dividing time slots across multiple tasks. Implements `Future`.
 ///
@@ -22,8 +21,7 @@ use crate::round::Ucw;
 /// # Examples
 /// ```
 /// # extern crate std;
-/// use juggle::*;
-/// use juggle::utils::*;
+/// use juggle::{*, dy::*, utils::*};
 /// use std::time::{Duration, Instant};
 /// # use std::thread::sleep;
 /// # struct StdTimerClock;

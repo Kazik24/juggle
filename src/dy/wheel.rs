@@ -5,7 +5,7 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::*;
 use super::handle::*;
-use crate::round::Algorithm;
+use crate::dy::Algorithm;
 
 /// Single-thread async task scheduler with dynamic task state control. Implements `Future`.
 ///
@@ -57,7 +57,7 @@ use crate::round::Algorithm;
 /// # Examples
 /// ```
 /// # extern crate alloc;
-/// use juggle::*;
+/// use juggle::{*, dy::*};
 /// use alloc::collections::VecDeque;
 /// use core::cell::RefCell;
 ///

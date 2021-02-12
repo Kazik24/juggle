@@ -6,12 +6,12 @@ use core::fmt::{Debug, Formatter};
 use core::fmt::Result;
 use core::mem::swap;
 use core::task::{Context, Poll, Waker};
-use crate::round::dyn_future::{DynamicFuture, TaskName};
-use crate::round::handle::State;
-use crate::round::registry::Registry;
-use crate::round::Ucw;
+use crate::dy::dyn_future::{DynamicFuture, TaskName};
+use crate::dy::handle::State;
+use crate::dy::registry::Registry;
+use crate::utils::Ucw;
 use crate::utils::AtomicWakerRegistry;
-use crate::round::stat::{TaskWrapper, StopReason, TaskRegistry};
+use crate::dy::stat::{TaskWrapper, StopReason, TaskRegistry};
 
 pub(crate) type TaskKey = usize;
 

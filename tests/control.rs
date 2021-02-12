@@ -6,6 +6,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use rand::{Rng, SeedableRng};
 use rand::prelude::StdRng;
+use juggle::dy::*;
 use juggle::*;
 use juggle::utils::noop_waker;
 
