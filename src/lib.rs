@@ -68,7 +68,7 @@
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(type_alias_impl_trait)]
+#![feature(type_alias_impl_trait,const_fn_fn_ptr_basics,const_mut_refs)]
 
 #![warn(clippy::cargo,
     clippy::needless_borrow,

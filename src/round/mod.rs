@@ -1,5 +1,5 @@
 pub(crate) mod dyn_future;
-mod algorithm;
+pub(crate) mod algorithm;
 mod wheel;
 mod handle;
 mod registry;
@@ -58,7 +58,7 @@ impl<T> DerefMut for UcwRefMut<'_,T>{
 
 impl<T> Ucw<T>{
     #[inline(always)]
-    pub(crate) fn new(value: T)->Self{
+    pub(crate) const fn new(value: T)->Self{
         Self{
             #[cfg(debug_assertions)]
             inner: RefCell::new(value),

@@ -87,6 +87,32 @@ pub fn func_waker(func_ptr: fn()) -> Waker {
     unsafe { Waker::from_raw(RawWaker::new(func_ptr as *const (), &TABLE)) }
 }
 
+/// Convert static reference to type implementing [`DynamicWake`](trait.DynamicWake.html)
+/// into Waker.
+///
+/// Returned waker wraps given static reference and safe to `mem::forget` without leak.
+/// This method also doesn't perform any allocations.
+pub fn to_static_waker<T: DynamicWake + Send + Sync + 'static>(wake: &'static T)->Waker{
+    struct Helper<T>(T);
+    impl<T: DynamicWake + Send + Sync + 'static> Helper<T> {
+        const VTABLE: RawWakerVTable = RawWakerVTable::new(
+            Self::waker_clone,
+            Self::waker_wake,
+            Self::waker_wake,
+            dummy,
+        );
+        //SAFETY: ptr always contains valid Arc<T>
+        unsafe fn waker_clone(ptr: *const ()) -> RawWaker {
+            RawWaker::new(ptr, &Self::VTABLE)
+        }
+        //SAFETY: ptr always contains valid Arc<T>
+        unsafe fn waker_wake(ptr: *const ()) {
+            (*(ptr as *const T)).wake();
+        }
+    }
+    unsafe { Waker::from_raw(RawWaker::new(wake as *const T as *const (), &Helper::<T>::VTABLE)) }
+}
+
 struct Helper<T>(T);
 
 impl<T: DynamicWake + Send + Sync + 'static> Helper<T> {
@@ -123,7 +149,7 @@ pub(crate) struct AtomicWakerRegistry {
 }
 
 impl AtomicWakerRegistry {
-    pub fn empty() -> Self { Self { inner: AtomicCell::new(None) } }
+    pub const fn empty() -> Self { Self { inner: AtomicCell::new(None) } }
     pub fn register(&self, waker: Waker) -> bool { self.inner.swap(Some(waker)).is_none() }
     pub fn clear(&self) -> bool { self.inner.swap(None).is_some() }
     pub fn notify_wake(&self) -> bool {

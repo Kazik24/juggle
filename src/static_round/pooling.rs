@@ -15,27 +15,41 @@ macro_rules! unsafe_static_poll_func{
             use core::pin::Pin;
             use core::mem::MaybeUninit;
             use core::task::{Poll, Context};
-            let pointer: unsafe fn(StaticHandle,&mut Context<'_>)->Poll<()> = |handle,cx|{
-                //for now require Send + Sync + 'static, maybe it can be loosened to only
-                //Send + 'static when scheduler will enforce it at runtime.
-                type TaskType = impl Future<Output=()> + Send + Sync + 'static;
-                fn wrapper(handle: StaticHandle)->TaskType{
-                    $(let $handle_name = handle;)?
-                    $async_expr
-                }
+
+            type TaskType = impl Future<Output=()> + 'static;
+            fn wrapper(_handle: StaticHandle)->TaskType{
+                $(let $handle_name = _handle;)?
+                $async_expr
+            }
+            let pointer: unsafe fn(StaticHandle,&mut Context<'_>,bool)->Poll<()> = |handle,cx,restart|{
                 //todo check if this can cause unsafety cause operations aren't volatile
                 static mut POLL: MaybeUninit<TaskType> = unsafe{ MaybeUninit::uninit()};
                 static mut INIT_FLAG: u8 = 0; //uninit
                 unsafe{
-                    match INIT_FLAG {
-                        0 =>{
-                            POLL = MaybeUninit::new(wrapper(handle));
-                            //mark after creating task, so in case of panic propagation this will remain uninitialized
-                            INIT_FLAG = 1;
+                    if restart {
+                        if INIT_FLAG == 1 {//if already initialized
+                            INIT_FLAG = 0;//temporary uninit in case destructor unwinds, so it would init on next poll
+                            POLL.as_mut_ptr().drop_in_place(); //drop previous value
                         }
-                        2 => return Poll::Ready(()),
-                        _ => {}
+                        POLL = MaybeUninit::new(wrapper(handle));
+                        //mark after creating task, so in case of panic propagation this will remain uninit
+                        INIT_FLAG = 1;
+                    }else{
+                        match INIT_FLAG {
+                            0 =>{
+                                POLL = MaybeUninit::new(wrapper(handle));
+                                //mark after creating task, so in case of panic propagation this will remain uninitialized
+                                INIT_FLAG = 1;
+                            }
+                            2 =>{
+                                if !restart { return Poll::Ready(()) }
+                                //restart task only if it was finished
+                                POLL = MaybeUninit::new(wrapper(handle));
+                            }
+                            _ => {} //1 = initialized
+                        }
                     }
+
                     //statics are never moved
                     let pin = Pin::new_unchecked(&mut *POLL.as_mut_ptr());
                     let result = pin.poll(cx);
@@ -63,13 +77,18 @@ mod tests{
     use core::pin::Pin;
     use core::task::{Poll, Context};
     use std::mem::MaybeUninit;
+    use crate::utils::DropGuard;
     use crate::static_round::wheel::StaticHandle;
 
-    struct PtrWrapper(unsafe fn(StaticHandle,&mut Context<'_>)->Poll<()>);
-    impl Future for PtrWrapper{
+    //todo this is only temporary prove of concept code, I know it has unsafe
+    struct PtrWrapper<F>(unsafe fn(StaticHandle,&mut Context<'_>,bool)->Poll<()>,F);
+    impl<F: FnMut()->bool> Future for PtrWrapper<F>{
         type Output = ();
-        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            unsafe{ self.0(unsafe{MaybeUninit::uninit().assume_init()},cx) }
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            unsafe{
+                let flag = self.as_mut().get_unchecked_mut().1();
+                self.0(MaybeUninit::uninit().assume_init(),cx,flag)
+            }
         }
     }
 
@@ -84,7 +103,8 @@ mod tests{
         Yield::once().await;
         println!("*do_sth end");
     }
-    async fn do_sth_other(){
+    async fn do_sth_other(handle: StaticHandle){
+        let guard = DropGuard::new(||println!("do_sth_other guard dropped"));
         println!("*do_sth_other start");
         Yield::once().await;
         println!("do_sth_other x2");
@@ -96,21 +116,27 @@ mod tests{
         println!("do_sth_other x3");
         Yield::once().await;
         println!("*do_sth_other end");
+        drop(guard);
     }
 
     #[test]
     fn test_decl(){
         let p1 = unsafe_static_poll_func!(()=>do_sth());
-        let p2 = unsafe_static_poll_func!((name)=>do_sth_other());
+        let p2 = unsafe_static_poll_func!((name)=>do_sth_other(name));
+        let mut count = 0;
 
 
-
-        spin_block_on(PtrWrapper(p1));
+        spin_block_on(PtrWrapper(p1,||false));
         println!("**********************");
-        spin_block_on(PtrWrapper(p2));
+        spin_block_on(PtrWrapper(p2,||{
+            count += 1;
+            let r = count == 10;
+            if r { println!("Restarting...");}
+            r
+        }));
         println!("**********************");
-        spin_block_on(PtrWrapper(p1));
+        spin_block_on(PtrWrapper(p1,||false));
         println!("**********************");
-        spin_block_on(PtrWrapper(p2));
+        spin_block_on(PtrWrapper(p2,||false));
     }
 }
