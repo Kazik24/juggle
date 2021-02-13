@@ -6,16 +6,25 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::convert::identity;
 use std::ops::Not;
 use std::thread::spawn;
+use std::task::{Context, Poll};
+use std::pin::Pin;
+use crate::spin_block_on;
+use crate::st::stt_future::StaticFuture;
 
 type StaticAlgorithm = crate::st::algorithm::StaticAlgorithm;
 
 #[derive(Copy,Clone)]
 #[repr(transparent)]
 pub struct StaticHandle{
-    alg: &'static StaticWheelDef,
+    alg: &'static StaticAlgorithm,
     _phantom: PhantomData<*mut ()>,
 }
 
+impl StaticHandle{
+    pub(crate) fn new(alg: &'static StaticAlgorithm)->Self{
+        Self{alg,_phantom:PhantomData}
+    }
+}
 
 pub struct StaticWheelDef{
     lock: AtomicBool,
@@ -31,6 +40,12 @@ pub struct StaticWheel{
 }
 
 impl StaticWheelDef{
+    pub const fn from_raw_config(config: &'static [StaticFuture])->Self{
+        Self{
+            lock: AtomicBool::new(false),
+            algorithm: StaticAlgorithm::from_raw_config(config),
+        }
+    }
     pub fn lock(&'static self)->StaticWheel{
         if !self.lock.compare_exchange(false,true,Ordering::AcqRel,Ordering::Acquire).unwrap_or_else(identity) {
             self.algorithm.init();
@@ -47,9 +62,20 @@ impl StaticWheelDef{
 
 impl StaticWheel{
     pub fn handle(&self)->StaticHandle{
-        StaticHandle{alg:self.alg,_phantom: PhantomData}
+        StaticHandle{alg:&self.alg.algorithm,_phantom: PhantomData}
     }
 
+    pub fn spin_block(self)->Result<(),SuspendError>{ spin_block_on(self) }
+    pub fn spin_block_forever(self)->!{
+        self.spin_block().unwrap();
+        panic!("StaticWheel::spin_block_forever(): Didn't expect all tasks to finish.")
+    }
+}
+impl Future for StaticWheel{
+    type Output = Result<(),SuspendError>;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.alg.algorithm.poll_internal(cx).map(|flag| if flag { Ok(()) } else { Err(SuspendError) })
+    }
 }
 
 #[cfg(test)]

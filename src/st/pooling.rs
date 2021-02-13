@@ -1,5 +1,6 @@
 
-
+pub(crate) const RESTART_TASK:u8 = 1;
+pub(crate) const CANCEL_TASK:u8 = 2;
 
 
 /// Creates function pointer (static) from given async expression.
@@ -21,19 +22,25 @@ macro_rules! unsafe_static_poll_func{
                 $(let $handle_name = _handle;)?
                 $async_expr
             }
-            let pointer: unsafe fn(StaticHandle,&mut Context<'_>,bool)->Poll<()> = |handle,cx,restart|{
+            let pointer: unsafe fn(StaticHandle,&mut Context<'_>,u8)->Poll<()> = |handle,cx,status|{
                 //todo check if this can cause unsafety cause operations aren't volatile
                 static mut POLL: MaybeUninit<TaskType> = unsafe{ MaybeUninit::uninit()};
                 static mut INIT_FLAG: u8 = 0; //uninit
                 unsafe{
-                    if restart {
+                    if status != 0 {
+                        //drop anyways
                         if INIT_FLAG == 1 {//if already initialized
-                            INIT_FLAG = 0;//temporary uninit in case destructor unwinds, so it would init on next poll
+                            //temporary uninit/drop in case destructor unwinds
+                            INIT_FLAG = if status == 1 { 0 } else { 2 };
                             POLL.as_mut_ptr().drop_in_place(); //drop previous value
                         }
-                        POLL = MaybeUninit::new(wrapper(handle));
-                        //mark after creating task, so in case of panic propagation this will remain uninit
-                        INIT_FLAG = 1;
+                        if status == 1 { //if should restart
+                            POLL = MaybeUninit::new(wrapper(handle));
+                            //mark after creating task, so in case of panic propagation this will remain uninit
+                            INIT_FLAG = 1;
+                        } else { //if should only drop
+                            return Poll::Ready(()); //return now
+                        }
                     }else{
                         match INIT_FLAG {
                             0 =>{
@@ -41,11 +48,7 @@ macro_rules! unsafe_static_poll_func{
                                 //mark after creating task, so in case of panic propagation this will remain uninitialized
                                 INIT_FLAG = 1;
                             }
-                            2 =>{
-                                if !restart { return Poll::Ready(()) }
-                                //restart task only if it was finished
-                                POLL = MaybeUninit::new(wrapper(handle));
-                            }
+                            2 => return Poll::Ready(()),
                             _ => {} //1 = initialized
                         }
                     }
@@ -79,10 +82,13 @@ mod tests{
     use std::mem::MaybeUninit;
     use crate::utils::DropGuard;
     use crate::st::wheel::StaticHandle;
+    use std::cell::UnsafeCell;
+    use crate::st::stt_future::StaticFuture;
+    use crate::st::algorithm::StaticAlgorithm;
 
     //todo this is only temporary prove of concept code, I know it has unsafe
-    struct PtrWrapper<F>(unsafe fn(StaticHandle,&mut Context<'_>,bool)->Poll<()>,F);
-    impl<F: FnMut()->bool> Future for PtrWrapper<F>{
+    struct PtrWrapper<F>(unsafe fn(StaticHandle,&mut Context<'_>,u8)->Poll<()>,F);
+    impl<F: FnMut()->u8> Future for PtrWrapper<F>{
         type Output = ();
         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             unsafe{
@@ -119,6 +125,7 @@ mod tests{
         drop(guard);
     }
 
+
     #[test]
     fn test_decl(){
         let p1 = unsafe_static_poll_func!(()=>do_sth());
@@ -126,17 +133,18 @@ mod tests{
         let mut count = 0;
 
 
-        spin_block_on(PtrWrapper(p1,||false));
+        spin_block_on(PtrWrapper(p1,||0));
         println!("**********************");
         spin_block_on(PtrWrapper(p2,||{
             count += 1;
-            let r = count == 10;
-            if r { println!("Restarting...");}
-            r
+            if count == 10 {
+                println!("Restarting...");
+                RESTART_TASK
+            }else{ 0 }
         }));
         println!("**********************");
-        spin_block_on(PtrWrapper(p1,||false));
+        spin_block_on(PtrWrapper(p1,||0));
         println!("**********************");
-        spin_block_on(PtrWrapper(p2,||false));
+        spin_block_on(PtrWrapper(p2,||0));
     }
 }
