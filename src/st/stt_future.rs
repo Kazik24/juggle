@@ -6,13 +6,13 @@ use crate::utils::{DropGuard, AtomicWakerRegistry, DynamicWake, to_waker, to_sta
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use crate::st::handle::StaticHandle;
-use std::mem::MaybeUninit;
-use crate::st::polling::{CANCEL_TASK, RESTART_TASK};
+use std::mem::{MaybeUninit, ManuallyDrop};
+use crate::st::polling::{CANCEL_TASK, RESTART_TASK, FnPtrWrapper};
 use crate::st::{StopReason, StaticParams};
 
 pub struct StaticFuture{
     //not send not sync
-    static_poll: unsafe fn(StaticHandle,&mut Context<'_>,u8) ->Poll<()>,
+    static_poll: FnPtrWrapper,
     flags: UnsafeCell<Option<StaticSyncFlags>>,
     name: Option<&'static str>,
     stop_reason: Cell<StopReason>,
@@ -25,7 +25,7 @@ unsafe impl Sync for StaticFuture {}
 
 
 impl StaticFuture{
-    pub const fn new(poll: unsafe fn(StaticHandle,&mut Context<'_>,u8) ->Poll<()>,
+    pub const fn new(poll: FnPtrWrapper,
                      params: StaticParams)->Self{
         Self{
             static_poll: poll,
@@ -51,8 +51,7 @@ impl StaticFuture{
         self.with_polling(move||{
             //SAFETY: we call this inside with_polling.
             unsafe {
-                let func = self.static_poll;
-                let res = func(handle,&mut Context::from_waker(&noop_waker()),CANCEL_TASK);
+                let res = self.static_poll.call(handle,&mut Context::from_waker(&noop_waker()),CANCEL_TASK);
                 debug_assert!(res.is_ready());
             }
         })
@@ -77,8 +76,9 @@ impl StaticFuture{
             //SAFETY: we call this inside with_polling.
             unsafe {
                 let func = self.static_poll;
-                let waker = &to_static_waker(flags); //todo maybe inline it in struct cause this will run dummy drop
-                func(handle,&mut Context::from_waker(waker),if restart { RESTART_TASK } else { 0 })
+                //ManuallyDrop to avoid calling waker destructor, it has dummy destructor anyways
+                let waker = &ManuallyDrop::new(to_static_waker(flags));
+                func.call(handle,&mut Context::from_waker(waker),if restart { RESTART_TASK } else { 0 })
             }
         })
     }

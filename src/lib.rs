@@ -68,7 +68,7 @@
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(type_alias_impl_trait,const_fn_fn_ptr_basics,const_mut_refs)]
+#![feature(type_alias_impl_trait)]
 
 #![warn(clippy::cargo,
     clippy::needless_borrow,
@@ -86,6 +86,7 @@ pub mod macro_private{
     pub use crate::st::StaticWheelDef;
     pub use crate::st::StaticFuture;
     pub use crate::st::handle_task;
+    pub use crate::st::FnPtrWrapper;
 }
 
 pub use self::block::{block_on, spin_block_on};

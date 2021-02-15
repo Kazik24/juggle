@@ -29,6 +29,7 @@ use std::mem::{ManuallyDrop, MaybeUninit};
 
 pub(crate) use chunk_slab::ChunkSlab;
 pub(crate) use ucw::Ucw;
+use std::future::Future;
 
 
 /// Implement this trait if you want to create custom waker with [`to_waker`](fn.to_waker.html) function.
@@ -96,7 +97,7 @@ pub fn func_waker(func_ptr: fn()) -> Waker {
 ///
 /// Returned waker wraps given static reference and safe to `mem::forget` without leak.
 /// This method also doesn't perform any allocations.
-pub fn to_static_waker<T: DynamicWake + Send + Sync + 'static>(wake: &'static T)->Waker{
+pub fn to_static_waker<T: DynamicWake + Send + Sync + Sized + 'static>(wake: &'static T)->Waker{
     struct Helper<T>(T);
     impl<T: DynamicWake + Send + Sync + 'static> Helper<T> {
         const VTABLE: RawWakerVTable = RawWakerVTable::new(
@@ -166,6 +167,11 @@ impl AtomicWakerRegistry {
             None => false,
         }
     }
+}
+
+pub async fn forever<F: Future>(future: F){
+    future.await;
+    panic!("Future was supposed to run forever :/");
 }
 
 pub(crate) struct DropGuard<F: FnOnce()>{

@@ -62,6 +62,7 @@ impl StaticAlgorithm{
     pub(crate) fn suspend(&self, key: TaskKey) -> bool {
         match self.registry.get(key) {
             Some(task) if task.get_stop_reason() == StopReason::None => {
+                //todo handle RestartSuspended
                 task.set_stop_reason(StopReason::Suspended);
                 self.inc_suspended();
                 true

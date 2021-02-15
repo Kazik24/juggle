@@ -27,6 +27,7 @@ macro_rules! static_config {
         ),*
     ) => {
         {
+            use $crate::st::{StaticHandle, StaticParams};
             use $crate::macro_private::*;
             static ARRAY: [StaticFuture;count_expr!($($async_expr),*)] = [$(
                 StaticFuture::new(unsafe_static_poll_func!(($($handle_var)?)=>$async_expr),

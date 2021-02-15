@@ -10,7 +10,7 @@ mod handle;
 pub use handle::StaticHandle;
 pub use wheel::{StaticWheelDef, StaticWheel};
 pub use stt_future::StaticFuture;
-pub use polling::handle_task;
+pub use polling::{handle_task, FnPtrWrapper};
 
 #[repr(u8)]
 #[derive(Copy,Clone,Eq,PartialEq,Hash,Debug)]
