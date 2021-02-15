@@ -10,21 +10,9 @@ use std::task::{Context, Poll};
 use std::pin::Pin;
 use crate::spin_block_on;
 use crate::st::stt_future::StaticFuture;
+use crate::st::handle::StaticHandle;
 
 type StaticAlgorithm = crate::st::algorithm::StaticAlgorithm;
-
-#[derive(Copy,Clone)]
-#[repr(transparent)]
-pub struct StaticHandle{
-    alg: &'static StaticAlgorithm,
-    _phantom: PhantomData<*mut ()>,
-}
-
-impl StaticHandle{
-    pub(crate) fn new(alg: &'static StaticAlgorithm)->Self{
-        Self{alg,_phantom:PhantomData}
-    }
-}
 
 pub struct StaticWheelDef{
     lock: AtomicBool,
@@ -53,7 +41,12 @@ impl StaticWheelDef{
         }
         panic!("StaticWheel is already used elsewhere.");
     }
-    pub unsafe fn get_unchecked(&'static self)->StaticWheel{ StaticWheel{ alg: &self, _phantom: PhantomData} }
+    pub unsafe fn get_unchecked(&'static self)->StaticWheel{
+        if !self.lock.compare_exchange(false,true,Ordering::AcqRel,Ordering::Acquire).unwrap_or_else(identity) {
+            self.algorithm.init();
+        }
+        StaticWheel{ alg: &self, _phantom: PhantomData}
+    }
     pub unsafe fn unlock(&'static self){
         self.lock.store(false,Ordering::Release);
     }

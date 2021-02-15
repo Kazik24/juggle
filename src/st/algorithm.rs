@@ -4,13 +4,12 @@ use std::cell::{Cell, UnsafeCell};
 use crate::utils::{AtomicWakerRegistry, Ucw, DropGuard};
 use crate::dy::algorithm::TaskKey;
 use std::task::{Context, Poll};
-use crate::st::wheel::StaticHandle;
+use crate::st::handle::StaticHandle;
 use std::marker::PhantomData;
 use crate::st::StopReason;
-use crate::st::pooling;
+use crate::st::polling;
 
 
-const N:usize = 2;
 pub(crate) struct StaticAlgorithm{
     registry: &'static [StaticFuture],
     last_waker: AtomicWakerRegistry,
@@ -21,21 +20,14 @@ pub(crate) struct StaticAlgorithm{
 
 impl StaticAlgorithm{
 
-    pub(crate) const fn from_raw_config(conf: &'static [StaticFuture])->Self{
+    pub(crate) const fn from_raw_config(config: &'static [StaticFuture])->Self{
         Self{
-            registry: conf,
+            registry: config,
             last_waker: AtomicWakerRegistry::empty(),
             current: Cell::new(None),
             suspended_count: Cell::new(0),
-            unfinished_count: Cell::new(0),
+            unfinished_count: Cell::new(config.len()),
         }
-    }
-    fn asdasd()->(){
-        async fn asdas(){}
-        let s = StaticAlgorithm::from_raw_config({
-            static AA: [StaticFuture;1] = [StaticFuture::new(unsafe_static_poll_func!(()=>asdas()), None, false)];
-            &AA
-        });
     }
     pub(crate) fn init(&'static self){ //create all self-refs
         let mut suspended = 0;
@@ -46,9 +38,9 @@ impl StaticAlgorithm{
             task.init(&self.last_waker);
         }
         self.suspended_count.set(suspended);
-        self.unfinished_count.set(self.registry.len() - suspended); //remaining are unfinished
     }
     pub(crate) fn get_current(&self) -> Option<TaskKey> { self.current.get() }
+    pub(crate) const fn get_registered_count(&self)->usize{self.registry.len()}
     fn inc_suspended(&self) { self.suspended_count.set(self.suspended_count.get() + 1) }
     fn dec_suspended(&self) { self.suspended_count.set(self.suspended_count.get() - 1) }
     fn inc_unfinished(&self) { self.unfinished_count.set(self.unfinished_count.get() + 1) }
@@ -93,6 +85,20 @@ impl StaticAlgorithm{
         }
     }
 
+    pub(crate) fn cancel(&self, key: TaskKey) -> bool {
+        if let Some(task) = self.registry.get(key) {
+            let r = task.get_stop_reason();
+            if r != StopReason::Cancelled {
+                task.set_stop_reason(StopReason::Cancelled);
+                if r == StopReason::Suspended {
+                    self.dec_suspended();
+                }
+                return true;
+            }
+        }
+        false
+    }
+
     pub(crate) fn poll_internal(&'static self, cx: &mut Context<'_>) -> Poll<bool> {
         let waker = cx.waker();
         loop {
@@ -116,7 +122,6 @@ impl StaticAlgorithm{
     }
 
     fn beat_once(&'static self) -> bool { //return true if should continue and false if should wait
-        println!("Beat");
         let registry = &self.registry;
         let handle = StaticHandle::new(self);
         let mut any_poll = false;
@@ -129,6 +134,8 @@ impl StaticAlgorithm{
             if reason != StopReason::None {
                 if reason == StopReason::Cancelled {
                     run_task.cancel(handle);
+                    self.dec_unfinished();
+                    continue;
                 } else if reason == StopReason::Restart {
                     run_task.set_stop_reason(StopReason::None);
                     restart = true;
@@ -149,7 +156,7 @@ impl StaticAlgorithm{
             drop(guard);
             if is_ready { //task was finished and dropped, mark it
                 run_task.set_stop_reason(StopReason::Finished);
-                self.unfinished_count.set(self.unfinished_count.get() - 1);//one less
+                self.dec_unfinished();//one less
             }
         }
         any_poll

@@ -24,11 +24,11 @@ pub struct WheelHandle<'futures> {
 pub struct IdNum(core::num::NonZeroUsize);
 
 impl IdNum {
-    fn from_usize(v: usize) -> Self {
+    pub(crate) fn from_usize(v: usize) -> Self {
         //SAFETY: any value + 1 is non-zero, except usize::MAX which should panic in debug mode
         Self(unsafe { core::num::NonZeroUsize::new_unchecked(v + 1) })
     }
-    fn to_usize(self) -> usize {
+    pub(crate) fn to_usize(self) -> usize {
         self.0.get() - 1
     }
 }

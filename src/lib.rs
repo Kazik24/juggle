@@ -82,6 +82,11 @@ pub mod dy;
 pub mod st;
 mod yield_helper;
 mod block;
+pub mod macro_private{
+    pub use crate::st::StaticWheelDef;
+    pub use crate::st::StaticFuture;
+    pub use crate::st::handle_task;
+}
 
 pub use self::block::{block_on, spin_block_on};
 pub use self::yield_helper::{Yield, YieldTimes, YieldWhile};

@@ -5,10 +5,10 @@ use std::task::{Context, Poll, Waker};
 use crate::utils::{DropGuard, AtomicWakerRegistry, DynamicWake, to_waker, to_static_waker, noop_waker};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use crate::st::wheel::StaticHandle;
+use crate::st::handle::StaticHandle;
 use std::mem::MaybeUninit;
-use crate::st::pooling::{CANCEL_TASK, RESTART_TASK};
-use crate::st::StopReason;
+use crate::st::polling::{CANCEL_TASK, RESTART_TASK};
+use crate::st::{StopReason, StaticParams};
 
 pub struct StaticFuture{
     //not send not sync
@@ -26,12 +26,12 @@ unsafe impl Sync for StaticFuture {}
 
 impl StaticFuture{
     pub const fn new(poll: unsafe fn(StaticHandle,&mut Context<'_>,u8) ->Poll<()>,
-                     name: Option<&'static str>,suspended: bool)->Self{
+                     params: StaticParams)->Self{
         Self{
             static_poll: poll,
             flags: UnsafeCell::new(None),
-            name,
-            stop_reason: Cell::new(if suspended {StopReason::Suspended} else {StopReason::None}),
+            name: params.name,
+            stop_reason: Cell::new(if params.suspended {StopReason::Suspended} else {StopReason::None}),
             polling: Cell::new(false),
         }
     }
