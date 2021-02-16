@@ -7,7 +7,6 @@ use std::task::{Context, Poll};
 use crate::st::handle::StaticHandle;
 use std::marker::PhantomData;
 use crate::st::StopReason;
-use crate::st::polling;
 
 
 pub(crate) struct StaticAlgorithm{
@@ -61,11 +60,19 @@ impl StaticAlgorithm{
     //if rotate_once encounters suspended task, then it will be removed from queue
     pub(crate) fn suspend(&self, key: TaskKey) -> bool {
         match self.registry.get(key) {
-            Some(task) if task.get_stop_reason() == StopReason::None => {
-                //todo handle RestartSuspended
-                task.set_stop_reason(StopReason::Suspended);
-                self.inc_suspended();
-                true
+            Some(task) => match task.get_stop_reason() {
+                StopReason::None => {
+                    //todo handle RestartSuspended
+                    task.set_stop_reason(StopReason::Suspended);
+                    self.inc_suspended();
+                    true
+                }
+                StopReason::Restart => {
+                    task.set_stop_reason(StopReason::RestartSuspended);
+                    self.inc_suspended();
+                    true
+                }
+                _ => false
             }
             _ => false,
         }
@@ -74,7 +81,8 @@ impl StaticAlgorithm{
         match self.registry.get(key) {
             Some(task) => {
                 match task.get_stop_reason() {
-                    StopReason::Suspended => self.dec_suspended(),
+                    //if restart suspended, then chang to just restart
+                    StopReason::Suspended | StopReason::RestartSuspended => self.dec_suspended(),
                     StopReason::Cancelled | StopReason::Finished => self.inc_unfinished(),
                     StopReason::Restart => return true,//todo decide if user should know about restarting state cause its only market state
                     _ => {}
@@ -134,12 +142,16 @@ impl StaticAlgorithm{
             let mut restart = false;
             if reason != StopReason::None {
                 if reason == StopReason::Cancelled {
-                    run_task.cancel(handle);
+                    run_task.cancel(handle,false);
                     self.dec_unfinished();
                     continue;
                 } else if reason == StopReason::Restart {
                     run_task.set_stop_reason(StopReason::None);
                     restart = true;
+                } else if reason == StopReason::RestartSuspended {
+                    run_task.set_stop_reason(StopReason::Suspended);
+                    run_task.cancel(handle,true); //drop task and set it to uninit
+                    continue;
                 } else {
                     continue; //remove from queue
                 }

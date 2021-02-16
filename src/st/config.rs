@@ -1,63 +1,118 @@
 
-use crate::st::stt_future::StaticFuture;
-use crate::st::polling::*;
-use crate::st::handle::StaticHandle;//todo macro
-use crate::st::wheel::StaticWheelDef;
-use crate::st::StaticParams;
-
-#[macro_export]
-macro_rules! clear_expr{
-    ($e:expr) => {()}
-}
-#[macro_export]
-macro_rules! count_expr{
-    () => { 0 };
-    ($($e:expr),+) => {
-        [$(clear_expr!($e)),+].len()
-    };
-}
+use crate::st::{StaticParams, StaticWheelDef, StaticHandle};
+use core::task::{Context, Poll};
+use core::mem::MaybeUninit;
+use core::future::Future;
+use core::pin::Pin;
 
 #[macro_export]
 macro_rules! static_config {
+    (@impl_clr $e:expr) => {()};
+    (@impl_cnt ) => { 0 };
+    (@impl_cnt $($e:expr),+) => {
+        [$(static_config!(@impl_clr $e)),+].len()
+    };
     (
         $(
-        ( $($handle_var:ident)? )
-        $( $params_expr:expr )?
-        => $async_expr:expr
+            ( $($handle_var:ident)? )
+            $( $params_expr:expr )?
+            => $async_expr:expr
         ),*
     ) => {
         {
+            use core::future::Future;
+            use core::mem::MaybeUninit;
             use $crate::st::{StaticHandle, StaticParams};
             use $crate::macro_private::*;
-            static ARRAY: [StaticFuture;count_expr!($($async_expr),*)] = [$(
-                StaticFuture::new(unsafe_static_poll_func!(($($handle_var)?)=>$async_expr),
-                { StaticParams::new() $(; $params_expr )?})
-                ),*];
-            StaticWheelDef::from_raw_config(&ARRAY)
+            static ARRAY: [StaticFuture;static_config!(@impl_cnt $($async_expr),*)] = [$(
+                StaticFuture::new({
+                    type TaskType = impl Future<Output=()> + 'static;
+                    fn wrapper(_handle: StaticHandle)->TaskType{
+                        $(let $handle_var = _handle;)?
+                        $async_expr
+                    }
+                    FnPtrWrapper(|handle,cx,status|{
+                        //todo check if this can cause unsafety cause operations aren't volatile
+                        static mut POLL: MaybeUninit<TaskType> = unsafe{ MaybeUninit::uninit() };
+                        static mut INIT_FLAG: u8 = 0; //uninit
+                        unsafe{
+                            handle_task(&mut POLL,&mut INIT_FLAG,status,move||wrapper(handle),cx)
+                        }
+                    }) //return pointer wrapper from expression
+                },{ StaticParams::new() $(; $params_expr )?}) ),*];
+            $crate::st::StaticWheelDef::from_raw_config(&ARRAY)
         }
     }
 }
 
+pub(crate) const RESTART_TASK:u8 = 1;
+pub(crate) const CANCEL_TASK:u8 = 2;
+pub(crate) const UNINIT_TASK:u8 = 3;
+const FLAG_UNINIT: u8 = 0;
+const FLAG_CREATED: u8 = 1;
+const FLAG_DROPPED: u8 = 2;
+
+#[derive(Copy, Clone)]
+pub struct FnPtrWrapper(pub unsafe fn(StaticHandle,&mut Context<'_>,u8)->Poll<()>);
+impl FnPtrWrapper{
+    pub(crate) unsafe fn call(self,handle: StaticHandle,cx: &mut Context<'_>,status: u8)->Poll<()>{
+        self.0(handle,cx,status)
+    }
+}
+
+pub unsafe fn handle_task<T,F>(task: &'static mut MaybeUninit<T>,flag: &'static mut u8,status: u8,
+                               init: F,cx: &mut Context<'_>)->Poll<()>
+    where T: Future<Output=()> + 'static, F: FnOnce()->T{
+    if status != 0 {
+        debug_assert!(status == CANCEL_TASK || status == RESTART_TASK || status == UNINIT_TASK);
+        //drop anyways
+        if *flag == FLAG_CREATED {//if already initialized
+            //temporary uninit/drop in case destructor unwinds
+            *flag = if status == RESTART_TASK || status == UNINIT_TASK { FLAG_UNINIT } else { FLAG_DROPPED };
+            task.as_mut_ptr().drop_in_place(); //drop previous value
+        }
+        if status == RESTART_TASK { //if should restart
+            *task = MaybeUninit::new(init());
+            //mark after creating task, so in case of panic propagation this will remain uninit
+            *flag = FLAG_CREATED;
+        } else { //if should only drop
+            return Poll::Ready(()); //return now
+        }
+    }else{
+        match *flag {
+            FLAG_UNINIT =>{
+                *task = MaybeUninit::new(init());
+                //mark after creating task, so in case of panic propagation this will remain uninitialized
+                *flag = FLAG_CREATED;
+            }
+            FLAG_DROPPED => return Poll::Ready(()),
+            _ => {} //1 = initialized
+        }
+    }
+
+    debug_assert_eq!(*flag,FLAG_CREATED);
+    //statics are never moved
+    let pin = Pin::new_unchecked(&mut *task.as_mut_ptr());
+    let result = pin.poll(cx);
+    if result.is_ready() {
+        //Mark ready to avoid unsafety in case function is polled again.
+        //Marking is done before drop in so when destruction panic propagates it won't cause
+        //double drop on next call.
+        *flag = FLAG_DROPPED;
+        //static will never be used again so we can drop it
+        task.as_mut_ptr().drop_in_place();
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests{
-    #[macro_use]
     use super::*;
-    use crate::{spin_block_on, Yield};
-    use core::future::Future;
-    use core::pin::Pin;
-    use core::task::{Poll, Context};
-    use std::mem::MaybeUninit;
-    use crate::utils::{DropGuard, to_waker};
-    use crate::st::wheel::StaticWheel;
-    use crate::st::handle::StaticHandle;
-    use std::cell::UnsafeCell;
-    use crate::st::stt_future::StaticFuture;
-    use crate::st::algorithm::StaticAlgorithm;
-    use std::io::{stdout, Write};
+    use crate::{*, utils::*, st::*, dy::*};
+    use std::sync::atomic::*;
     use std::sync::Arc;
-    use std::sync::atomic::{Ordering, AtomicUsize};
-    use crate::dy::SuspendError;
     use std::task::Waker;
+
 
     async fn do_sth(){
         let _guard = DropGuard::new(||println!("do_sth guard dropped"));

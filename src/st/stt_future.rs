@@ -1,13 +1,10 @@
-use std::cell::{Cell, UnsafeCell};
-use crate::dy::stat::TaskWrapper;
-use crate::dy::dyn_future::TaskName;
-use std::task::{Context, Poll, Waker};
-use crate::utils::{DropGuard, AtomicWakerRegistry, DynamicWake, to_waker, to_static_waker, noop_waker};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use core::cell::{Cell, UnsafeCell};
+use core::task::{Context, Poll, Waker};
+use crate::utils::{DropGuard, AtomicWakerRegistry, DynamicWake, to_static_waker, noop_waker};
+use core::sync::atomic::{AtomicBool, Ordering};
 use crate::st::handle::StaticHandle;
-use std::mem::{MaybeUninit, ManuallyDrop};
-use crate::st::polling::{CANCEL_TASK, RESTART_TASK, FnPtrWrapper};
+use core::mem::ManuallyDrop;
+use crate::st::config::{CANCEL_TASK, RESTART_TASK, FnPtrWrapper, UNINIT_TASK};
 use crate::st::{StopReason, StaticParams};
 
 pub struct StaticFuture{
@@ -20,7 +17,6 @@ pub struct StaticFuture{
 }
 
 //this is fake for StaticFuture alone, but allows to hold it in statics
-unsafe impl Send for StaticFuture {}
 unsafe impl Sync for StaticFuture {}
 
 
@@ -47,11 +43,12 @@ impl StaticFuture{
     pub(crate)fn get_stop_reason(&self) -> StopReason { self.stop_reason.get() }
     pub(crate)fn set_stop_reason(&self, val: StopReason) { self.stop_reason.set(val); }
     pub(crate)fn is_runnable(&self) -> bool { self.get_flags().is_runnable() }
-    pub(crate)fn cancel(&self,handle: StaticHandle){
+    pub(crate)fn cancel(&self,handle: StaticHandle,uninit: bool){
         self.with_polling(move||{
             //SAFETY: we call this inside with_polling.
             unsafe {
-                let res = self.static_poll.call(handle,&mut Context::from_waker(&noop_waker()),CANCEL_TASK);
+                let status = if uninit { UNINIT_TASK } else { CANCEL_TASK };
+                let res = self.static_poll.call(handle,&mut Context::from_waker(&ManuallyDrop::new(noop_waker())),status);
                 debug_assert!(res.is_ready());
             }
         })

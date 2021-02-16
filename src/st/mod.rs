@@ -1,6 +1,5 @@
 mod stt_future;
 #[macro_use]
-mod polling;
 mod wheel;
 mod algorithm;
 #[macro_use]
@@ -10,11 +9,11 @@ mod handle;
 pub use handle::StaticHandle;
 pub use wheel::{StaticWheelDef, StaticWheel};
 pub use stt_future::StaticFuture;
-pub use polling::{handle_task, FnPtrWrapper};
+pub use config::{handle_task, FnPtrWrapper};
 
 #[repr(u8)]
 #[derive(Copy,Clone,Eq,PartialEq,Hash,Debug)]
-pub(crate) enum StopReason{ None,Suspended,Cancelled,Finished,Restart,/*RestartSuspended valid if smn does restart,suspend*/ }
+pub(crate) enum StopReason{ None,Suspended,Cancelled,Finished,Restart,RestartSuspended /*valid if smn does restart,suspend*/ }
 
 
 #[derive(Clone, Eq, PartialEq, Hash)]
