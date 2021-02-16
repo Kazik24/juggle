@@ -7,6 +7,7 @@ use std::task::{Context, Poll};
 use crate::st::handle::StaticHandle;
 use std::marker::PhantomData;
 use crate::st::StopReason;
+use std::mem::forget;
 
 
 pub(crate) struct StaticAlgorithm{
@@ -25,18 +26,30 @@ impl StaticAlgorithm{
             last_waker: AtomicWakerRegistry::empty(),
             current: Cell::new(None),
             suspended_count: Cell::new(0),
-            unfinished_count: Cell::new(config.len()),
+            unfinished_count: Cell::new(0),
         }
     }
     pub(crate) fn init(&'static self){ //create all self-refs
         let mut suspended = 0;
-        for task in self.registry.iter() {
-            if task.get_stop_reason() == StopReason::Suspended {
-                suspended += 1;
+        if self.unfinished_count.get() == usize::MAX {
+            //all task are in ether uninit or dropped state
+            let handle = StaticHandle::new(self);
+            for task in self.registry.iter() {
+                task.cancel(handle,true);
+                if task.init(&self.last_waker) {
+                    suspended += 1;
+                }
             }
-            task.init(&self.last_waker);
+        }else{
+            //all tasks are in uninit state
+            for task in self.registry.iter() {
+                if task.init(&self.last_waker) {
+                    suspended += 1;
+                }
+            }
         }
         self.suspended_count.set(suspended);
+        self.unfinished_count.set(self.registry.len());
     }
     pub(crate) fn get_current(&self) -> Option<TaskKey> { self.current.get() }
     pub(crate) const fn get_registered_count(&self)->usize{self.registry.len()}
@@ -106,6 +119,29 @@ impl StaticAlgorithm{
             }
         }
         false
+    }
+
+    pub(crate) fn reset_all_tasks(&'static self){
+        if {
+            let c = self.unfinished_count.get();
+            c == 0 || c == usize::MAX
+        } {
+            //mark that all tasks are dropped, init can use this mark
+            self.unfinished_count.set(usize::MAX);
+            return;//init will handle state changes to tasks, we return here to avoid unnecessary cleanup
+        }
+        let mut it = self.registry.iter();
+        let handle = StaticHandle::new(self);
+        while let Some(task) = it.next() {
+            let cleanup = DropGuard::new(||{
+                //panic occurred, do emergency cleanup
+                while let Some(task) = it.next() {
+                    task.cleanup(handle); //aborts on panic
+                }
+            });
+            task.cleanup(handle);
+            forget(cleanup);//didn't panic so continue
+        }
     }
 
     pub(crate) fn poll_internal(&'static self, cx: &mut Context<'_>) -> Poll<bool> {

@@ -11,6 +11,7 @@ use std::pin::Pin;
 use crate::spin_block_on;
 use crate::st::stt_future::StaticFuture;
 use crate::st::handle::StaticHandle;
+use crate::utils::DropGuard;
 
 type StaticAlgorithm = crate::st::algorithm::StaticAlgorithm;
 
@@ -34,22 +35,16 @@ impl StaticWheelDef{
             algorithm: StaticAlgorithm::from_raw_config(config),
         }
     }
-    pub fn lock(&'static self)->StaticWheel{
+    pub fn is_locked(&'static self)->bool { self.lock.load(Ordering::Relaxed) }
+    pub fn try_lock(&'static self)->Option<StaticWheel>{
         if !self.lock.compare_exchange(false,true,Ordering::AcqRel,Ordering::Acquire).unwrap_or_else(identity) {
             self.algorithm.init();
-            return StaticWheel{ alg: &self, _phantom: PhantomData};
+            return Some(StaticWheel{ alg: &self, _phantom: PhantomData});
         }
-        panic!("StaticWheel is already used elsewhere.");
+        None
     }
-    pub unsafe fn get_unchecked(&'static self)->StaticWheel{
-        if !self.lock.compare_exchange(false,true,Ordering::AcqRel,Ordering::Acquire).unwrap_or_else(identity) {
-            self.algorithm.init();
-        }
-        StaticWheel{ alg: &self, _phantom: PhantomData}
-    }
-    pub unsafe fn unlock(&'static self){
-        self.lock.store(false,Ordering::Release);
-    }
+    pub fn lock(&'static self)->StaticWheel{ self.try_lock().expect("StaticWheel is already used elsewhere.") }
+
 }
 
 
@@ -70,23 +65,10 @@ impl Future for StaticWheel{
         self.alg.algorithm.poll_internal(cx).map(|flag| if flag { Ok(()) } else { Err(SuspendError) })
     }
 }
-
-#[cfg(test)]
-mod tests{
-    use super::*;
-    use std::mem::MaybeUninit;
-    use crate::st::stt_future::StaticFuture;
-
-    fn _test_sth(){
-        let wheel = Box::new(StaticWheelDef{lock: AtomicBool::new(false),algorithm:
-            unsafe{MaybeUninit::zeroed().assume_init()}//todo remove
-        });
-        let wheel: &'static _ = Box::leak(wheel);
-
-        spawn(move ||{
-            let w = wheel.lock().handle(); //todo this immediately drops future, maybe take should lock wheel forever and only unsafe method would unlock it
-            w.clone();
-        });
-
+impl Drop for StaticWheel{
+    fn drop(&mut self) {
+        let guard = DropGuard::new(||self.alg.lock.store(false,Ordering::Release));
+        self.alg.algorithm.reset_all_tasks();
+        drop(guard);
     }
 }

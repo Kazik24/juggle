@@ -10,7 +10,7 @@ pub struct StaticHandle{
 }
 
 impl StaticHandle{
-    pub(crate) fn new(alg: &'static StaticAlgorithm)->Self{
+    pub(crate) const fn new(alg: &'static StaticAlgorithm)->Self{
         Self{alg,_phantom:PhantomData}
     }
 

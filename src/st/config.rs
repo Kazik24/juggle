@@ -66,10 +66,15 @@ pub unsafe fn handle_task<T,F>(task: &'static mut MaybeUninit<T>,flag: &'static 
     if status != 0 {
         debug_assert!(status == CANCEL_TASK || status == RESTART_TASK || status == UNINIT_TASK);
         //drop anyways
-        if *flag == FLAG_CREATED {//if already initialized
-            //temporary uninit/drop in case destructor unwinds
-            *flag = if status == RESTART_TASK || status == UNINIT_TASK { FLAG_UNINIT } else { FLAG_DROPPED };
-            task.as_mut_ptr().drop_in_place(); //drop previous value
+        match *flag {
+            FLAG_CREATED => {//if already initialized
+                //temporary uninit/drop in case destructor unwinds
+                *flag = if status == RESTART_TASK || status == UNINIT_TASK { FLAG_UNINIT } else { FLAG_DROPPED };
+                task.as_mut_ptr().drop_in_place(); //drop previous value
+            }
+            FLAG_DROPPED if status == UNINIT_TASK => { *flag = FLAG_UNINIT }
+            FLAG_UNINIT if status == CANCEL_TASK => { *flag = FLAG_DROPPED }
+            _ => {}
         }
         if status == RESTART_TASK { //if should restart
             *task = MaybeUninit::new(init());
@@ -108,7 +113,8 @@ pub unsafe fn handle_task<T,F>(task: &'static mut MaybeUninit<T>,flag: &'static 
 #[cfg(test)]
 mod tests{
     use super::*;
-    use crate::{*, utils::*, st::*, dy::*};
+    use crate::{*, utils::*, dy::*};
+    use crate::st::{StaticWheelDef,StaticWheel,StaticHandle};
     use std::sync::atomic::*;
     use std::sync::Arc;
     use std::task::Waker;
@@ -169,7 +175,6 @@ mod tests{
     }
     #[test]
     fn test_config(){
-        let wheel = CONFIG.lock();
-        wheel.spin_block().unwrap();
+        CONFIG.lock().spin_block().unwrap();
     }
 }

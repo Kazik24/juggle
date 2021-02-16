@@ -14,6 +14,7 @@ pub struct StaticFuture{
     name: Option<&'static str>,
     stop_reason: Cell<StopReason>,
     polling: Cell<bool>,
+    start_suspended: bool,
 }
 
 //this is fake for StaticFuture alone, but allows to hold it in statics
@@ -27,13 +28,15 @@ impl StaticFuture{
             static_poll: poll,
             flags: UnsafeCell::new(None),
             name: params.name,
-            stop_reason: Cell::new(if params.suspended {StopReason::Suspended} else {StopReason::None}),
+            stop_reason: Cell::new(StopReason::None),
             polling: Cell::new(false),
+            start_suspended: params.suspended,
         }
     }
-    pub(crate)fn init(&self,global: &'static AtomicWakerRegistry){
-        let flags = unsafe{ &mut *self.flags.get() };
-        *flags = Some(StaticSyncFlags::new(global));
+    pub(crate)fn init(&self,global: &'static AtomicWakerRegistry)->bool{//true if initialized suspended
+        self.set_stop_reason(if self.start_suspended {StopReason::Suspended} else {StopReason::None});
+        unsafe{ *self.flags.get() = Some(StaticSyncFlags::new(global)); }
+        self.start_suspended
     }
     fn get_flags(&self)->&StaticSyncFlags{
         unsafe{ &*self.flags.get() }.as_ref().expect("StaticFuture init error")
@@ -44,40 +47,37 @@ impl StaticFuture{
     pub(crate)fn set_stop_reason(&self, val: StopReason) { self.stop_reason.set(val); }
     pub(crate)fn is_runnable(&self) -> bool { self.get_flags().is_runnable() }
     pub(crate)fn cancel(&self,handle: StaticHandle,uninit: bool){
-        self.with_polling(move||{
-            //SAFETY: we call this inside with_polling.
-            unsafe {
-                let status = if uninit { UNINIT_TASK } else { CANCEL_TASK };
-                let res = self.static_poll.call(handle,&mut Context::from_waker(&ManuallyDrop::new(noop_waker())),status);
-                debug_assert!(res.is_ready());
-            }
-        })
+        let status = if uninit { UNINIT_TASK } else { CANCEL_TASK };
+        let res = self.poll_protected(handle,&ManuallyDrop::new(noop_waker()),status);
+        debug_assert!(res.is_ready());
     }
-    fn with_polling<T>(&self,func: impl FnOnce()->T)->T{
+    pub(crate)fn cleanup(&self,handle: StaticHandle){
+        let guard = DropGuard::new(||self.set_stop_reason(StopReason::Cancelled));
+        self.cancel(handle,true);
+        drop(guard);
+    }
+    fn poll_protected(&self,handle: StaticHandle, waker: &Waker, status: u8)->Poll<()>{
         //SAFETY: guard against undefined behavior of recursive polling.
         if self.polling.replace(true) {
-            panic!("Recursive call to StaticFuture::poll_local is not allowed.");
+            panic!("Recursive call to task control function is not allowed.");
         }
         let guard = DropGuard::new(||self.polling.set(false)); //SAFETY: construct guard
-        let result = func();
+        let result = unsafe {
+            self.static_poll.call(handle,&mut Context::from_waker(waker),status)
+        };
         drop(guard); //explicit drop
         result
     }
     pub(crate)fn poll_local(&'static self,handle: StaticHandle,restart: bool) -> Poll<()> {
-        self.with_polling(move||{
-            //store false cause if it became true before this operation then polling can be done
-            //if it becomes true after this operation but before poll then this also means that polling can be done
-            let flags = self.get_flags();
-            flags.set_runnable(false);
 
-            //SAFETY: we call this inside with_polling.
-            unsafe {
-                let func = self.static_poll;
-                //ManuallyDrop to avoid calling waker destructor, it has dummy destructor anyways
-                let waker = &ManuallyDrop::new(to_static_waker(flags));
-                func.call(handle,&mut Context::from_waker(waker),if restart { RESTART_TASK } else { 0 })
-            }
-        })
+        //store false cause if it became true before this operation then polling can be done
+        //if it becomes true after this operation but before poll then this also means that polling can be done
+        let flags = self.get_flags();
+        flags.set_runnable(false);
+
+        //ManuallyDrop to avoid calling waker destructor, it has dummy destructor anyways
+        let waker = &ManuallyDrop::new(to_static_waker(flags));
+        self.poll_protected(handle,waker,if restart { RESTART_TASK } else { 0 })
     }
 }
 
