@@ -42,7 +42,7 @@ impl StaticFuture{
         unsafe{ &*self.flags.get() }.as_ref().expect("StaticFuture init error")
     }
 
-    pub(crate)fn get_name(&self) -> Option<&str> { self.name }
+    pub(crate)fn get_name(&self) -> Option<&'static str> { self.name }
     pub(crate)fn get_stop_reason(&self) -> StopReason { self.stop_reason.get() }
     pub(crate)fn set_stop_reason(&self, val: StopReason) { self.stop_reason.set(val); }
     pub(crate)fn is_runnable(&self) -> bool { self.get_flags().is_runnable() }
@@ -100,7 +100,8 @@ impl StaticSyncFlags {
 
 impl DynamicWake for StaticSyncFlags {
     fn wake(&self) {
-        self.runnable.store(true, Ordering::Release);
+        //todo is it now race condition free?
         self.global.notify_wake();
+        self.runnable.store(true, Ordering::Release);
     }
 }

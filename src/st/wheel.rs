@@ -29,6 +29,7 @@ pub struct StaticWheel{
 }
 
 impl StaticWheelDef{
+    /// This method should not be used, it is exposed only due to use in macro.
     pub const fn from_raw_config(config: &'static [StaticFuture])->Self{
         Self{
             lock: AtomicBool::new(false),
@@ -50,6 +51,7 @@ impl StaticWheelDef{
 
 impl StaticWheel{
     pub fn handle(&self)->StaticHandle{
+        //todo what to do with handle, it can survive StaticWheel drop
         StaticHandle{alg:&self.alg.algorithm,_phantom: PhantomData}
     }
 

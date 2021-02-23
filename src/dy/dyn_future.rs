@@ -6,7 +6,7 @@ use core::ops::Deref;
 use core::pin::Pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::*;
-use crate::utils::{AtomicWakerRegistry, DynamicWake, to_waker, DropGuard};
+use crate::utils::{AtomicWakerRegistry, DynamicWake, to_waker, DropGuard, BorrowedWaker};
 use crate::dy::SpawnParams;
 use crate::dy::stat::{TaskWrapper, StopReason};
 
@@ -67,7 +67,14 @@ impl<'a> TaskWrapper for DynamicFuture<'a>{
         //SAFETY: we just checked if this function was called recursively.
         let result = unsafe {
             let pin_ref = &mut *self.pinned_future.get();
-            pin_ref.as_mut().poll(&mut Context::from_waker(self.flags.waker_ref()))
+            //SAFETY: 'to_borrowed_waker' creates waker without consuming Arc,
+            //so that waker returned from it cannot be dropped and cannot outlive given Arc borrow.
+            //this is ensured by returned waker wrapped in BorrowedWaker and fact that waker reference
+            //can't survive outside this unsafe block. Note that if waker is cloned it will increment
+            //Arc count and dropping this cloned value will decrement it so it's safe.
+            //this is done to safe some space in SyncFlags
+            let waker = &*BorrowedWaker::new(&self.flags.flags);
+            pin_ref.as_mut().poll(&mut Context::from_waker(waker))
         };
         drop(guard); //explicit drop
         result
@@ -77,10 +84,6 @@ impl<'a> TaskWrapper for DynamicFuture<'a>{
 
 struct SyncFlags {
     flags: Arc<InnerSyncFlags>,
-    // inline waker cause we want to avoid cloning (optimally i would like this to be only field cause
-    // this waker is actually wrapped arc from above, but you cant access inner content of waker
-    // without using transmute, so i don't want to do that)
-    waker: Waker,
 }
 
 impl SyncFlags {
@@ -90,11 +93,9 @@ impl SyncFlags {
             runnable: AtomicBool::new(true),
         });
         Self {
-            waker: to_waker(flags.clone()),
             flags,
         }
     }
-    fn waker_ref(&self) -> &Waker { &self.waker }
     fn is_runnable(&self) -> bool { self.flags.runnable.load(Ordering::Relaxed) }
     fn set_runnable(&self, value: bool) { self.flags.runnable.store(value, Ordering::Release) }
 }
@@ -106,7 +107,8 @@ struct InnerSyncFlags {
 
 impl DynamicWake for InnerSyncFlags {
     fn wake(&self) {
-        self.runnable.store(true, Ordering::Release);
+        //todo is it now race condition free?
         self.global.notify_wake();
+        self.runnable.store(true, Ordering::Release);
     }
 }

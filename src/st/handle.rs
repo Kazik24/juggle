@@ -2,7 +2,7 @@ use crate::st::algorithm::StaticAlgorithm;
 use std::marker::PhantomData;
 use crate::dy::IdNum;
 
-#[derive(Copy,Clone)]
+
 #[repr(transparent)]
 pub struct StaticHandle{
     pub(crate) alg: &'static StaticAlgorithm,
@@ -19,6 +19,9 @@ impl StaticHandle{
     pub fn resume(&self, id: IdNum) -> bool { self.alg.resume(id.to_usize()) }
     pub fn restart(&self, id: IdNum) -> bool { self.alg.restart(id.to_usize()) }
     pub fn current(&self) -> Option<IdNum> { self.alg.get_current().map(|t| IdNum::from_usize(t)) }
+    pub fn get_current_name(&self)->Option<&'static str> { self.alg.get_current().and_then(|k|self.alg.get_name(k)) }
+    pub fn get_name(&self, id: IdNum)->Option<&'static str> { self.alg.get_name(id.to_usize()) }
+    pub fn get_by_name(&self, name: &str)->Option<IdNum> { self.alg.get_by_name(name).map(|t|IdNum::from_usize(t)) }
     pub const fn registered_count(&self)-> usize{ self.alg.get_registered_count() }
     pub fn get_id_by_index(&self,index: usize)->IdNum{
         if index >= self.registered_count() {

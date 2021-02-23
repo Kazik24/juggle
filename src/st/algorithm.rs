@@ -26,23 +26,22 @@ impl StaticAlgorithm{
             last_waker: AtomicWakerRegistry::empty(),
             current: Cell::new(None),
             suspended_count: Cell::new(0),
-            unfinished_count: Cell::new(0),
+            unfinished_count: Cell::new(usize::MAX),
         }
     }
     pub(crate) fn init(&'static self){ //create all self-refs
         let mut suspended = 0;
-        if self.unfinished_count.get() == usize::MAX {
-            //all task are in ether uninit or dropped state
-            let handle = StaticHandle::new(self);
+        if self.unfinished_count.get() == usize::MAX { //was never initialized
+            //all tasks are in uninit state
             for task in self.registry.iter() {
-                task.cancel(handle,true);
                 if task.init(&self.last_waker) {
                     suspended += 1;
                 }
             }
-        }else{
-            //all tasks are in uninit state
+        }else{ //reusing previously initialized object
+            //all task are in ether uninit or dropped state
             for task in self.registry.iter() {
+                task.cancel(StaticHandle::new(self),true);
                 if task.init(&self.last_waker) {
                     suspended += 1;
                 }
@@ -57,7 +56,12 @@ impl StaticAlgorithm{
     fn dec_suspended(&self) { self.suspended_count.set(self.suspended_count.get() - 1) }
     fn inc_unfinished(&self) { self.unfinished_count.set(self.unfinished_count.get() + 1) }
     fn dec_unfinished(&self) { self.unfinished_count.set(self.unfinished_count.get() - 1) }
-
+    pub(crate) fn get_name(&self, key: TaskKey) -> Option<&'static str>{
+        self.registry.get(key).and_then(|t|t.get_name())
+    }
+    pub(crate) fn get_by_name(&self, name: &str) -> Option<TaskKey>{
+        self.registry.iter().position(|t|t.get_name() == Some(name))
+    }
     //safe to call from inside task
     pub(crate) fn resume(&self, key: TaskKey) -> bool {
         match self.registry.get(key) {
@@ -122,24 +126,18 @@ impl StaticAlgorithm{
     }
 
     pub(crate) fn reset_all_tasks(&'static self){
-        if {
-            let c = self.unfinished_count.get();
-            c == 0 || c == usize::MAX
-        } {
-            //mark that all tasks are dropped, init can use this mark
-            self.unfinished_count.set(usize::MAX);
+        if self.unfinished_count.get() == 0 { //no task is alive, lazy reset
             return;//init will handle state changes to tasks, we return here to avoid unnecessary cleanup
         }
         let mut it = self.registry.iter();
-        let handle = StaticHandle::new(self);
         while let Some(task) = it.next() {
             let cleanup = DropGuard::new(||{
                 //panic occurred, do emergency cleanup
                 while let Some(task) = it.next() {
-                    task.cleanup(handle); //aborts on panic
+                    task.cleanup(StaticHandle::new(self)); //aborts on panic
                 }
             });
-            task.cleanup(handle);
+            task.cleanup(StaticHandle::new(self));
             forget(cleanup);//didn't panic so continue
         }
     }
@@ -168,7 +166,6 @@ impl StaticAlgorithm{
 
     fn beat_once(&'static self) -> bool { //return true if should continue and false if should wait
         let registry = &self.registry;
-        let handle = StaticHandle::new(self);
         let mut any_poll = false;
         for run_key in 0..registry.len() {
             let run_task = match registry.get(run_key){
@@ -178,7 +175,7 @@ impl StaticAlgorithm{
             let mut restart = false;
             if reason != StopReason::None {
                 if reason == StopReason::Cancelled {
-                    run_task.cancel(handle,false);
+                    run_task.cancel(StaticHandle::new(self),false);
                     self.dec_unfinished();
                     continue;
                 } else if reason == StopReason::Restart {
@@ -186,7 +183,7 @@ impl StaticAlgorithm{
                     restart = true;
                 } else if reason == StopReason::RestartSuspended {
                     run_task.set_stop_reason(StopReason::Suspended);
-                    run_task.cancel(handle,true); //drop task and set it to uninit
+                    run_task.cancel(StaticHandle::new(self),true); //drop task and set it to uninit
                     continue;
                 } else {
                     continue; //remove from queue
@@ -201,7 +198,7 @@ impl StaticAlgorithm{
             // on handle, 'from' queue shouldn't be edited by handles (this is not enforced) and
             // registry is now in borrowed state so nothing can be 'remove'd from it.
             any_poll = true;
-            let is_ready = run_task.poll_local(handle,restart).is_ready(); //run user code
+            let is_ready = run_task.poll_local(StaticHandle::new(self),restart).is_ready(); //run user code
             drop(guard);
             if is_ready { //task was finished and dropped, mark it
                 run_task.set_stop_reason(StopReason::Finished);
