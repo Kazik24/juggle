@@ -181,7 +181,7 @@ pub(crate) struct AtomicWakerRegistry {
 
 impl AtomicWakerRegistry {
     pub const fn empty() -> Self { Self { inner: AtomicCell::new(None) } }
-    pub fn register(&self, waker: Waker) -> bool { self.inner.swap(Some(waker)).is_none() }
+    pub fn register(&self, waker: &Waker) -> bool { self.inner.swap(Some(waker.clone())).is_none() }
     pub fn clear(&self) -> bool { self.inner.swap(None).is_some() }
     pub fn notify_wake(&self) -> bool {
         match self.inner.swap(None) {

@@ -271,7 +271,7 @@ impl Control<'_> {
         if !deferred.is_empty() && !Self::drain_runnable(&self.registry, deferred, from) {
             if from.is_empty() && to.borrow().is_empty() { //if has no work to do
                 //no runnable task found, register waker
-                self.last_waker.register(waker.clone());
+                self.last_waker.register(waker);
                 //check once again if no task was woken during this time
                 if !Self::drain_runnable(&self.registry, deferred, from) {
                     //waiting begins

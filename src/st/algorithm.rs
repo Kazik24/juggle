@@ -148,7 +148,7 @@ impl StaticAlgorithm{
             self.last_waker.clear();//drop previous waker if any
             if !self.beat_once() {
                 //no runnable task found, register waker
-                self.last_waker.register(waker.clone());
+                self.last_waker.register(waker);
                 //check once again if no task was woken during this time
                 if !self.beat_once() {
                     //waiting begins
@@ -165,38 +165,33 @@ impl StaticAlgorithm{
     }
 
     fn beat_once(&'static self) -> bool { //return true if should continue and false if should wait
-        let registry = &self.registry;
         let mut any_poll = false;
-        for run_key in 0..registry.len() {
-            let run_task = match registry.get(run_key){
-                Some(k) => k, None => continue,
-            };
-            let reason = run_task.get_stop_reason();
-            let mut restart = false;
-            if reason != StopReason::None {
-                if reason == StopReason::Cancelled {
+        for (run_key,run_task) in self.registry.iter().enumerate() {
+            let restart = match run_task.get_stop_reason() {
+                StopReason::None => false, //don't skip
+                StopReason::Cancelled => {
                     run_task.cancel(StaticHandle::new(self),false);
                     self.dec_unfinished();
-                    continue;
-                } else if reason == StopReason::Restart {
+                    continue; //task cancelled nothing to do
+                }
+                StopReason::Restart => {
                     run_task.set_stop_reason(StopReason::None);
-                    restart = true;
-                } else if reason == StopReason::RestartSuspended {
+                    true
+                }
+                StopReason::RestartSuspended => {
                     run_task.set_stop_reason(StopReason::Suspended);
                     run_task.cancel(StaticHandle::new(self),true); //drop task and set it to uninit
-                    continue;
-                } else {
-                    continue; //remove from queue
+                    continue; //task is suspended so we're done here
                 }
-            }
+                StopReason::Finished | StopReason::Suspended => continue, //not pollable
+            };
             if !run_task.is_runnable() {
                 continue; // next task
             }
             self.current.set(Some(run_key));
             let guard = DropGuard::new(||self.current.set(None));
             // be careful with interior mutability types here cause 'poll_local' can invoke any method
-            // on handle, 'from' queue shouldn't be edited by handles (this is not enforced) and
-            // registry is now in borrowed state so nothing can be 'remove'd from it.
+            // on handle
             any_poll = true;
             let is_ready = run_task.poll_local(StaticHandle::new(self),restart).is_ready(); //run user code
             drop(guard);

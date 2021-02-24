@@ -29,11 +29,6 @@ pub(crate) trait TaskWrapper {
 
 }
 
-macro_rules! make_config {
-    ($name:ident,$($task:expr),*) =>{
+pub(crate) trait BaseTaskRegistry{
 
-    }
 }
-
-
-

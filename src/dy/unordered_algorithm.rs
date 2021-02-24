@@ -204,7 +204,7 @@ impl<R: TaskRegistry<TaskKey>> UnorderedAlgorithm<R> where R::Task: TaskWrapper 
             let beat_result = self.beat_once();
             if let Rotate::Wait = beat_result {
                 //no runnable task found, register waker
-                self.last_waker.register(waker.clone());
+                self.last_waker.register(waker);
                 //check once again if no task was woken during this time
                 if let Rotate::Wait = self.beat_once() {
                     //waiting begins

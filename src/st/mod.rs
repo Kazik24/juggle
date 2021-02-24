@@ -5,6 +5,7 @@ mod algorithm;
 #[macro_use]
 mod config;
 mod handle;
+mod atomic_marker;
 
 pub use handle::StaticHandle;
 pub use wheel::{StaticWheelDef, StaticWheel};
