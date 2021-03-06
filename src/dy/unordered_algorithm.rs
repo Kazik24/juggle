@@ -5,12 +5,14 @@ use core::cell::Cell;
 use core::fmt::{Debug, Formatter};
 use core::fmt::Result;
 use core::mem::swap;
+use core::iter::from_fn;
 use core::task::{Context, Poll, Waker};
 use crate::dy::dyn_future::{DynamicFuture, TaskName};
 use crate::dy::handle::State;
 use crate::dy::registry::Registry;
 use crate::utils::{AtomicWakerRegistry, DropGuard, Ucw};
 use crate::dy::stat::{TaskWrapper, StopReason, TaskRegistry};
+use std::cmp::max;
 
 pub(crate) type TaskKey = usize;
 
@@ -199,19 +201,19 @@ impl<R: TaskRegistry<TaskKey>> UnorderedAlgorithm<R> where R::Task: TaskWrapper 
 
     pub(crate) fn poll_internal(&self, cx: &mut Context<'_>) -> Poll<bool> {
         let waker = cx.waker();
+        self.last_waker.clear();//drop previous waker if any
         loop {
-            self.last_waker.clear();//drop previous waker if any
-            let beat_result = self.beat_once();
-            if let Rotate::Wait = beat_result {
+            if !self.beat_once() {
                 //no runnable task found, register waker
                 self.last_waker.register(waker);
                 //check once again if no task was woken during this time
-                if let Rotate::Wait = self.beat_once() {
+                if !self.beat_once() {
                     //waiting begins
                     let cnt = self.registry.count();
-                    return if cnt == 0 { Poll::Ready(true) }
-                    else if cnt == self.suspended_count.get() { Poll::Ready(false) }//all tasks are suspended
-                    else { Poll::Pending } //all tasks executed to finish
+                    return if cnt == 0 || cnt == self.suspended_count.get() {
+                        self.last_waker.clear(); //waker not needed, clear before finishing
+                        Poll::Ready(cnt == 0) //true if all tasks finished, false if all suspended
+                    } else { Poll::Pending } //all tasks waiting
                 }else{
                     //if any was woken then try to deregister waker, then make one rotation
                     self.last_waker.clear();
@@ -220,13 +222,14 @@ impl<R: TaskRegistry<TaskKey>> UnorderedAlgorithm<R> where R::Task: TaskWrapper 
         }
     }
 
-    fn beat_once(&self) -> Rotate {
-        let cap = self.registry.capacity();
+    fn beat_once(&self) -> bool {
         let mut any_poll = false;
-        for run_key in 0..cap {
-            let run_task = match self.registry.get(run_key){
-                Some(k) => k, None => continue,
-            };
+        let mut index = 0;
+        for (run_key,run_task) in from_fn(move ||(index < self.registry.capacity()).then(move||{
+            let i = index;
+            index += 1;
+            i
+        })).filter_map(|k|self.registry.get(k).map(move|t|(k,t))) {
             let reason = run_task.get_stop_reason();
             if !reason.is_poll_allowed() {
                 if reason == StopReason::Cancelled {
@@ -251,6 +254,6 @@ impl<R: TaskRegistry<TaskKey>> UnorderedAlgorithm<R> where R::Task: TaskWrapper 
                 self.registry.remove(run_key).expect("Internal Error: task not found.");
             }
         }
-        if any_poll { Rotate::Continue } else { Rotate::Wait }
+        any_poll
     }
 }

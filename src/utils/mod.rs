@@ -95,7 +95,7 @@ pub fn func_waker(func_ptr: fn()) -> Waker {
 /// Convert static reference to type implementing [`DynamicWake`](trait.DynamicWake.html)
 /// into Waker.
 ///
-/// Returned waker wraps given static reference and safe to `mem::forget` without leak.
+/// Returned waker wraps given static reference and is safe to `mem::forget` without leak.
 /// This method also doesn't perform any allocations.
 pub fn to_static_waker<T: DynamicWake + Sync + 'static>(wake: &'static T)->Waker{
     struct Helper<T>(T);

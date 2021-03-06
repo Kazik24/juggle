@@ -22,8 +22,7 @@ unsafe impl Sync for StaticFuture {}
 
 
 impl StaticFuture{
-    pub const fn new(poll: FnPtrWrapper,
-                     params: StaticParams)->Self{
+    pub const fn new(poll: FnPtrWrapper,params: StaticParams)->Self{
         Self{
             static_poll: poll,
             flags: UnsafeCell::new(None),

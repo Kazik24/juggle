@@ -52,7 +52,8 @@ impl StaticWheelDef{
 impl StaticWheel{
     pub fn handle(&self)->StaticHandle{
         //todo what to do with handle, it can survive StaticWheel drop
-        StaticHandle{alg:&self.alg.algorithm,_phantom: PhantomData}
+        let alg = &self.alg.algorithm;
+        StaticHandle{alg,_phantom: PhantomData,generation_id: alg.get_generation()}
     }
 
     pub fn spin_block(self)->Result<(),SuspendError>{ spin_block_on(self) }

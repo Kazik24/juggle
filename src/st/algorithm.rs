@@ -16,6 +16,7 @@ pub(crate) struct StaticAlgorithm{
     current: Cell<Option<TaskKey>>,
     suspended_count: Cell<usize>,
     unfinished_count: Cell<usize>,
+    current_generation: Cell<usize>,
 }
 
 impl StaticAlgorithm{
@@ -27,6 +28,7 @@ impl StaticAlgorithm{
             current: Cell::new(None),
             suspended_count: Cell::new(0),
             unfinished_count: Cell::new(usize::MAX),
+            current_generation: Cell::new(usize::MAX), //will become 0 after first init
         }
     }
     pub(crate) fn init(&'static self){ //create all self-refs
@@ -49,7 +51,9 @@ impl StaticAlgorithm{
         }
         self.suspended_count.set(suspended);
         self.unfinished_count.set(self.registry.len());
+        self.current_generation.set(self.current_generation.get().wrapping_add(1));
     }
+    pub(crate) fn get_generation(&self)->usize {self.current_generation.get() }
     pub(crate) fn get_current(&self) -> Option<TaskKey> { self.current.get() }
     pub(crate) const fn get_registered_count(&self)->usize{self.registry.len()}
     fn inc_suspended(&self) { self.suspended_count.set(self.suspended_count.get() + 1) }
@@ -134,7 +138,7 @@ impl StaticAlgorithm{
             let cleanup = DropGuard::new(||{
                 //panic occurred, do emergency cleanup
                 while let Some(task) = it.next() {
-                    task.cleanup(StaticHandle::new(self)); //aborts on panic
+                    task.cleanup(StaticHandle::new(self)); //aborts on another panic
                 }
             });
             task.cleanup(StaticHandle::new(self));
@@ -144,8 +148,8 @@ impl StaticAlgorithm{
 
     pub(crate) fn poll_internal(&'static self, cx: &mut Context<'_>) -> Poll<bool> {
         let waker = cx.waker();
+        self.last_waker.clear();//drop previous waker if any
         loop {
-            self.last_waker.clear();//drop previous waker if any
             if !self.beat_once() {
                 //no runnable task found, register waker
                 self.last_waker.register(waker);
@@ -153,9 +157,10 @@ impl StaticAlgorithm{
                 if !self.beat_once() {
                     //waiting begins
                     let cnt = self.unfinished_count.get();
-                    return if cnt == 0 { Poll::Ready(true) }
-                    else if cnt == self.suspended_count.get() { Poll::Ready(false) }//all tasks are suspended
-                    else { Poll::Pending } //all tasks executed to finish
+                    return if cnt == 0 || cnt == self.suspended_count.get() {
+                        self.last_waker.clear(); //waker not needed, clear before finishing
+                        Poll::Ready(cnt == 0) //true if all tasks finished, false if all suspended
+                    } else { Poll::Pending } //all tasks waiting
                 }else{
                     //if any was woken then try to deregister waker, then make one rotation
                     self.last_waker.clear();

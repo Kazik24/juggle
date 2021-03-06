@@ -18,7 +18,7 @@ const HALTED: usize = 0b100;
 
 
 pub(crate) enum PutResult<T>{
-    TakenDuringPut(T),
+    TakenDuringPut(Option<T>),
     Success,
     TakenBeforePut(Option<T>),
     ConcurrentPut(Option<T>),
@@ -42,20 +42,30 @@ impl<T> AtomicMarkerOption<T>{
         let mut arg = Err(value);
         loop{
             use PutResult::*;
-            match self.try_put(arg) {
+            match self.try_put(Some(arg)) {
                 Success => break,
-                TakenDuringPut(v) | ConcurrentPut(Some(v)) | TakenBeforePut(Some(v)) => arg = Ok(v),
-                ConcurrentPut(None) | TakenBeforePut(None) => arg = Err(value),
+                TakenDuringPut(Some(v)) | ConcurrentPut(Some(v)) | TakenBeforePut(Some(v)) => arg = Ok(v),
+                TakenDuringPut(None) | ConcurrentPut(None) | TakenBeforePut(None) => arg = Err(value),
             }
             core::hint::spin_loop();
         }
     }
-    pub fn try_put(&self,value: Result<T,&T>)->PutResult<T> where T: Clone{
+    pub fn clear(&self) where T: Clone{
+        loop{
+            use PutResult::*;
+            match self.try_put(None) {
+                Success => break,
+                _ => {}
+            }
+            core::hint::spin_loop();
+        }
+    }
+    pub fn try_put(&self,value: Option<Result<T,&T>>)->PutResult<T> where T: Clone{
         match self.mark.compare_exchange(IDLE, PUTTING, Acquire, Acquire).unwrap_or_else(identity) {
             IDLE => {
                 unsafe {
                     // Locked acquired, update optional value
-                    *self.value.get() = Some(value.unwrap_or_else(|v|v.clone()));
+                    *self.value.get() = value.map(|v|v.unwrap_or_else(|v|v.clone()));
                     // Try release the lock
                     match self.mark.compare_exchange(PUTTING, IDLE, AcqRel, Acquire) {
                         Ok(_) => PutResult::Success,
@@ -64,17 +74,17 @@ impl<T> AtomicMarkerOption<T>{
                             // concurrent thread called `take`.
                             debug_assert_eq!(mark, PUTTING | MARKING);
                             // Take already registered value.
-                            let value = (*self.value.get()).take().unwrap();
+                            let value = (*self.value.get()).take();
                             self.mark.swap(IDLE, AcqRel);
                             PutResult::TakenDuringPut(value)
                         }
                     }
                 }
             }
-            MARKING => PutResult::TakenBeforePut(value.ok()),
+            MARKING => PutResult::TakenBeforePut(value.and_then(|v|v.ok())),
             mark => {
                 debug_assert!(mark == PUTTING || mark == PUTTING | MARKING);
-                PutResult::ConcurrentPut(value.ok())
+                PutResult::ConcurrentPut(value.and_then(|v|v.ok()))
             }
         }
     }
@@ -106,25 +116,24 @@ impl AtomicWaker{
     pub fn register(&self, waker: &Waker) {
         self.inner.put(waker)
     }
-    pub fn checkout(&self){
 
+
+    pub fn clear(&self) {
+        self.inner.clear();
     }
-    pub fn clear(&self) { self.inner.take(); }
     pub fn notify_wake(&self) {
 
     }
 }
 
 pub struct WakerRegistry{
-    state: AtomicUsize,
-    value: UnsafeCell<Option<Waker>>,
+    waker: AtomicMarkerOption<Waker>,
 }
 
 impl WakerRegistry {
     pub const fn new() -> Self {
         Self {
-            state: AtomicUsize::new(IDLE),
-            value: UnsafeCell::new(None),
+            waker: AtomicMarkerOption::new(None)
         }
     }
     //register waker into slot, make sure it is settled and set flag indicating that all call to
@@ -146,7 +155,7 @@ impl WakerRegistry {
     //clear waker previously registered by register method, and ignore mark flag if it was set after
     //call to register and before clear.
     pub fn clear(&self){
-
+        self.waker.clear();
     }
     //saves state flag as notified, and in case registry started listening wakes waker.
     pub fn notify_waker(&self){
