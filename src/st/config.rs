@@ -52,6 +52,7 @@ const FLAG_UNINIT: u8 = 0;
 const FLAG_CREATED: u8 = 1;
 const FLAG_DROPPED: u8 = 2;
 
+/// Implementations specific for static_config! macro. Do not use directly.
 #[derive(Copy, Clone)]
 pub struct FnPtrWrapper(pub unsafe fn(StaticHandle,&mut Context<'_>,u8)->Poll<()>);
 impl FnPtrWrapper{
@@ -60,6 +61,7 @@ impl FnPtrWrapper{
     }
 }
 
+/// Implementations specific for static_config! macro. Do not use directly.
 pub unsafe fn handle_task<T,F>(task: &'static mut MaybeUninit<T>,flag: &'static mut u8,status: u8,
                                init: F,cx: &mut Context<'_>)->Poll<()>
     where T: Future<Output=()> + 'static, F: FnOnce()->T{

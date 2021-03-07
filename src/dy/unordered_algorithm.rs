@@ -224,12 +224,10 @@ impl<R: TaskRegistry<TaskKey>> UnorderedAlgorithm<R> where R::Task: TaskWrapper 
 
     fn beat_once(&self) -> bool {
         let mut any_poll = false;
-        let mut index = 0;
-        for (run_key,run_task) in from_fn(move ||(index < self.registry.capacity()).then(move||{
-            let i = index;
-            index += 1;
-            i
-        })).filter_map(|k|self.registry.get(k).map(move|t|(k,t))) {
+        //capacity is never shortened during execution, even if it will be extended, task allocated outside
+        //will be executed by next call to beat_once, note that any_poll will be true in case task is added
+        //cause user must execute code for this to happen.
+        for (run_key,run_task) in (0..self.registry.capacity()).filter_map(|k|self.registry.get(k).map(move|t|(k,t))) {
             let reason = run_task.get_stop_reason();
             if !reason.is_poll_allowed() {
                 if reason == StopReason::Cancelled {
@@ -244,8 +242,7 @@ impl<R: TaskRegistry<TaskKey>> UnorderedAlgorithm<R> where R::Task: TaskWrapper 
             self.current.set(Some(run_key));
             let guard = DropGuard::new(||self.current.set(None));
             // be careful with interior mutability types here cause 'poll_local' can invoke any method
-            // on handle, 'from' queue shouldn't be edited by handles (this is not enforced) and
-            // registry is now in borrowed state so nothing can be 'remove'd from it.
+            // on handle, registry is now in borrowed state so nothing can be 'remove'd from it.
             any_poll = true;
             let is_ready = run_task.poll_local().is_ready(); //run user code
             drop(guard);

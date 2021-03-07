@@ -10,8 +10,8 @@ pub struct StaticHandle{
 }
 
 impl StaticHandle{
-    pub(crate) fn new(alg: &'static StaticAlgorithm)->Self{
-        Self{alg,_phantom:PhantomData,generation_id: alg.get_generation()}
+    pub(crate) fn with_id(alg: &'static StaticAlgorithm, id: usize)->Self{
+        Self{alg,_phantom:PhantomData,generation_id: id}
     }
     pub fn is_valid(&self)->bool{ self.alg.get_generation() == self.generation_id }
 

@@ -28,7 +28,6 @@ pub use load::LoadBalance;
 pub use timing::{TimerClock, TimerCount, TimingGroup};
 #[cfg(feature = "std")]
 pub use timing::StdTimerClock;
-use std::mem::{ManuallyDrop, MaybeUninit};
 
 pub(crate) use chunk_slab::ChunkSlab;
 pub(crate) use ucw::Ucw;
@@ -119,16 +118,27 @@ pub fn to_static_waker<T: DynamicWake + Sync + 'static>(wake: &'static T)->Waker
     unsafe { Waker::from_raw(Helper::<T>::waker_clone(wake as *const T as *const ())) }
 }
 
+/// Struct for borrowing atomic reference counted pointer to type implementing [`DynamicWake`]
+/// and treating it as Waker.
+///
+/// This struct implements `Deref<Target = Waker>`. Reference to waker supplied by this struct behaves exactly as
+/// constructed by [`to_waker`] and can be cloned as usual. This struct is useful when you want temporary
+/// waker but you're not a fan of the overhead with creating and destroying it.
+#[repr(transparent)]
 pub struct BorrowedWaker<'a>{
-    inner: ManuallyDrop<Waker>,
+    inner: mem::ManuallyDrop<Waker>,
     _phantom: PhantomData<&'a Waker>,
 }
-impl BorrowedWaker<'_>{
-    pub fn new<T: DynamicWake + Send + Sync + 'static>(ptr: &Arc<T>)->Self{
+impl<'a> BorrowedWaker<'a>{
+    /// Construct [`BorrowedWaker`] by borrowing atomic reference counted pointer to type
+    /// implementing [`DynamicWake`].
+    ///
+    /// To access `Waker` you only need to `Deref`erence this struct or coerce it to `&Waker`.
+    pub fn new<T: DynamicWake + Send + Sync + 'static>(ptr: &'a Arc<T>)->Self{
         Self{
             //SAFETY: waker contract upheld.
             //Waker is wrapped inside BorrowedWaker preventing it from being moved out and dropped.
-            inner: unsafe { ManuallyDrop::new(pointer_as_dynamic_waker(Arc::as_ptr(ptr))) },
+            inner: unsafe { mem::ManuallyDrop::new(pointer_as_dynamic_waker(Arc::as_ptr(ptr))) },
             _phantom: PhantomData
         }
     }
@@ -200,21 +210,23 @@ pub async fn forever<F: Future>(future: F){
 }
 
 pub(crate) struct DropGuard<F: FnOnce()>{
-    inner: MaybeUninit<F>,
+    inner: mem::MaybeUninit<F>,
 }
 impl<F: FnOnce()> DropGuard<F>{
     pub fn new(func: F)->Self{
         Self{
-            inner: MaybeUninit::new(func),
+            inner: mem::MaybeUninit::new(func),
         }
     }
 }
 
 impl<F: FnOnce()> Drop for DropGuard<F>{
     fn drop(&mut self) {
+        //SAFETY: move func from container, this is save because 'inner' is never used afterwards and
+        //it has MaybeUninit type so it won't run any drop code.
         unsafe{
             let func = self.inner.as_ptr().read();
-            func()
+            func() //call moved function and consume it
         }
     }
 }

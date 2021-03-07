@@ -83,6 +83,7 @@ pub mod st;
 mod yield_helper;
 mod block;
 pub mod macro_private{
+    //! Implementations specific for static_config! macro. Do not use directly.
     pub use crate::st::StaticFuture;
     pub use crate::st::handle_task;
     pub use crate::st::FnPtrWrapper;

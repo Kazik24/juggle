@@ -7,6 +7,7 @@ use core::mem::ManuallyDrop;
 use crate::st::config::{CANCEL_TASK, RESTART_TASK, FnPtrWrapper, UNINIT_TASK};
 use crate::st::{StopReason, StaticParams};
 
+/// Implementations specific for static_config! macro. Do not use directly.
 pub struct StaticFuture{
     //not send not sync
     static_poll: FnPtrWrapper,
@@ -22,6 +23,8 @@ unsafe impl Sync for StaticFuture {}
 
 
 impl StaticFuture{
+
+    /// Implementations specific for static_config! macro. Do not use directly.
     pub const fn new(poll: FnPtrWrapper,params: StaticParams)->Self{
         Self{
             static_poll: poll,

@@ -8,7 +8,8 @@ use crate::st::handle::StaticHandle;
 use std::marker::PhantomData;
 use crate::st::StopReason;
 use std::mem::forget;
-
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::Relaxed;
 
 pub(crate) struct StaticAlgorithm{
     registry: &'static [StaticFuture],
@@ -16,7 +17,7 @@ pub(crate) struct StaticAlgorithm{
     current: Cell<Option<TaskKey>>,
     suspended_count: Cell<usize>,
     unfinished_count: Cell<usize>,
-    current_generation: Cell<usize>,
+    current_generation: AtomicUsize,
 }
 
 impl StaticAlgorithm{
@@ -28,7 +29,7 @@ impl StaticAlgorithm{
             current: Cell::new(None),
             suspended_count: Cell::new(0),
             unfinished_count: Cell::new(usize::MAX),
-            current_generation: Cell::new(usize::MAX), //will become 0 after first init
+            current_generation: AtomicUsize::new(usize::MAX), //will become 0 after first init
         }
     }
     pub(crate) fn init(&'static self){ //create all self-refs
@@ -43,7 +44,7 @@ impl StaticAlgorithm{
         }else{ //reusing previously initialized object
             //all task are in ether uninit or dropped state
             for task in self.registry.iter() {
-                task.cancel(StaticHandle::new(self),true);
+                task.cancel(StaticHandle::with_id(self,usize::MAX),true); //dummy id
                 if task.init(&self.last_waker) {
                     suspended += 1;
                 }
@@ -51,9 +52,12 @@ impl StaticAlgorithm{
         }
         self.suspended_count.set(suspended);
         self.unfinished_count.set(self.registry.len());
-        self.current_generation.set(self.current_generation.get().wrapping_add(1));
+        //only need to be volatile increment, init can't be concurrent
+        self.current_generation.store(self.current_generation.load(Relaxed).wrapping_add(1),Relaxed);
     }
-    pub(crate) fn get_generation(&self)->usize {self.current_generation.get() }
+    pub(crate) fn get_generation(&self)->usize {
+        self.current_generation.load(Relaxed) //only volatile read cause it might be read from concurrent threads
+    }
     pub(crate) fn get_current(&self) -> Option<TaskKey> { self.current.get() }
     pub(crate) const fn get_registered_count(&self)->usize{self.registry.len()}
     fn inc_suspended(&self) { self.suspended_count.set(self.suspended_count.get() + 1) }
@@ -138,10 +142,10 @@ impl StaticAlgorithm{
             let cleanup = DropGuard::new(||{
                 //panic occurred, do emergency cleanup
                 while let Some(task) = it.next() {
-                    task.cleanup(StaticHandle::new(self)); //aborts on another panic
+                    task.cleanup(StaticHandle::with_id(self,usize::MAX)); //aborts on another panic
                 }
             });
-            task.cleanup(StaticHandle::new(self));
+            task.cleanup(StaticHandle::with_id(self,usize::MAX)); //dummy id
             forget(cleanup);//didn't panic so continue
         }
     }
@@ -171,11 +175,12 @@ impl StaticAlgorithm{
 
     fn beat_once(&'static self) -> bool { //return true if should continue and false if should wait
         let mut any_poll = false;
+        let gen_id = self.get_generation();
         for (run_key,run_task) in self.registry.iter().enumerate() {
             let restart = match run_task.get_stop_reason() {
                 StopReason::None => false, //don't skip
                 StopReason::Cancelled => {
-                    run_task.cancel(StaticHandle::new(self),false);
+                    run_task.cancel(StaticHandle::with_id(self,usize::MAX),false);
                     self.dec_unfinished();
                     continue; //task cancelled nothing to do
                 }
@@ -185,7 +190,7 @@ impl StaticAlgorithm{
                 }
                 StopReason::RestartSuspended => {
                     run_task.set_stop_reason(StopReason::Suspended);
-                    run_task.cancel(StaticHandle::new(self),true); //drop task and set it to uninit
+                    run_task.cancel(StaticHandle::with_id(self,usize::MAX),true); //drop task and set it to uninit
                     continue; //task is suspended so we're done here
                 }
                 StopReason::Finished | StopReason::Suspended => continue, //not pollable
@@ -198,7 +203,7 @@ impl StaticAlgorithm{
             // be careful with interior mutability types here cause 'poll_local' can invoke any method
             // on handle
             any_poll = true;
-            let is_ready = run_task.poll_local(StaticHandle::new(self),restart).is_ready(); //run user code
+            let is_ready = run_task.poll_local(StaticHandle::with_id(self,gen_id),restart).is_ready(); //run user code
             drop(guard);
             if is_ready { //task was finished and dropped, mark it
                 run_task.set_stop_reason(StopReason::Finished);
