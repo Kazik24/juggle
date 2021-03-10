@@ -37,15 +37,18 @@ async fn test_task(handle: WheelHandle<'_>) {
 pub fn test_round_robin() {
     let sch = Wheel::new();
     let handle = sch.handle().clone();
-    handle.spawn("T1", test_task(handle.clone())).unwrap();
-    handle.spawn("T2", test_task(handle.clone())).unwrap();
-    handle.spawn("T3", test_task(handle.clone())).unwrap();
-    handle.spawn("T4", test_task(handle.clone())).unwrap();
-    println!("Valid: {}", handle.is_valid());
+    let t1 = handle.spawn("T1", test_task(handle.clone())).unwrap();
+    let t2 = handle.spawn("T2", test_task(handle.clone())).unwrap();
+    let t3 = handle.spawn("T3", test_task(handle.clone())).unwrap();
+    let t4 = handle.spawn("T4", test_task(handle.clone())).unwrap();
+    assert!(handle.is_valid());
 
     smol::block_on(sch).unwrap();
-    println!("Valid: {}", handle.is_valid());
-    println!("Finished round robin.");
+    assert!(!handle.is_valid());
+    assert_eq!(handle.get_state(t1),None);
+    assert_eq!(handle.get_state(t2),None);
+    assert_eq!(handle.get_state(t3),None);
+    assert_eq!(handle.get_state(t4),None);
 }
 
 #[test]

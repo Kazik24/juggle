@@ -130,7 +130,7 @@ impl<'futures> SchedulerAlgorithm<'futures> {
                     else { State::Waiting }
                 }
             }
-            None => State::Unknown,
+            None => State::Inactive,
         }
     }
 

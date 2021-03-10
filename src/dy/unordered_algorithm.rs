@@ -86,7 +86,7 @@ impl<R: TaskRegistry<TaskKey>> UnorderedAlgorithm<R> where R::Task: TaskWrapper 
                     else { State::Waiting }
                 }
             }
-            None => State::Unknown,
+            None => State::Inactive,
         }
     }
 

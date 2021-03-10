@@ -33,10 +33,10 @@ fn test_suspend() {
         assert_eq!(handle.get_current_name().as_deref(), Some("Control"));
         //test resume/suspend
         assert!(handle.suspend(id1));
-        assert_eq!(handle.get_state(id1), State::Suspended);
+        assert_eq!(handle.get_state(id1), Some(State::Suspended));
         panic1.set(true);
         assert!(handle.resume(id2));
-        assert_eq!(handle.get_state(id2), State::Runnable);
+        assert_eq!(handle.get_state(id2), Some(State::Runnable));
         panic2.set(false);
         Yield::times(5).await;
 
@@ -46,15 +46,15 @@ fn test_suspend() {
 
         //double suspend/resume
         assert!(handle.suspend(id1));
-        assert_eq!(handle.get_state(id1), State::Suspended);
+        assert_eq!(handle.get_state(id1), Some(State::Suspended));
         assert!(!handle.suspend(id1));
-        assert_eq!(handle.get_state(id1), State::Suspended);
+        assert_eq!(handle.get_state(id1), Some(State::Suspended));
         panic1.set(true);
         Yield::times(5).await;
         assert!(handle.resume(id1));
-        assert_eq!(handle.get_state(id2), State::Runnable);
+        assert_eq!(handle.get_state(id2), Some(State::Runnable));
         assert!(!handle.resume(id1));
-        assert_eq!(handle.get_state(id2), State::Runnable);
+        assert_eq!(handle.get_state(id2), Some(State::Runnable));
         panic1.set(false);
 
         let rand = &mut StdRng::seed_from_u64(1234);
@@ -123,19 +123,19 @@ fn test_suspend_error() {
     wheel.handle().spawn(SpawnParams::default(), async move {
         //poll all tasks at least once
         yield_once!();
-        assert_eq!(h.get_state(w1), State::Waiting);
-        assert_eq!(h.get_state(w2), State::Waiting);
+        assert_eq!(h.get_state(w1), Some(State::Waiting));
+        assert_eq!(h.get_state(w2), Some(State::Waiting));
         Yield::times(5).await;
         let id = h.current().unwrap();
         assert!(h.cancel(id));
-        assert_eq!(h.get_state(id), State::Cancelled);
+        assert_eq!(h.get_state(id), Some(State::Cancelled));
         assert!(!h.cancel(id));
         let hdl = h.clone();
         //check if task is unknown after some time, id cannot be taken until current task that
         //cancelled it yields so newly spawned task will have different id.
         let new_id = h.spawn(SpawnParams::default(), async move {
             yield_once!();
-            assert_eq!(hdl.get_state(id), State::Unknown);
+            assert_eq!(hdl.get_state(id), Some(State::Inactive));
             assert_flags[1].set(true);
         }).unwrap();
         assert_ne!(new_id, id);
@@ -171,10 +171,10 @@ fn test_ready_task() {
     let ready = wheel.handle().spawn(SpawnParams::default(), signal.clone()).unwrap();
     let handle = wheel.handle().clone();
     assert_eq!(signal.poll_count(), 0);
-    assert_eq!(handle.get_state(ready), State::Runnable);
+    assert_eq!(handle.get_state(ready), Some(State::Runnable));
     wheel.handle().spawn(SpawnParams::default(), async move {
         yield_once!();
-        assert_eq!(handle.get_state(ready), State::Unknown);
+        assert_eq!(handle.get_state(ready), Some(State::Inactive));
         yield_once!();
     }).unwrap();
     smol::block_on(wheel).unwrap();
@@ -187,32 +187,32 @@ fn test_waiting() {
     let wheel = Wheel::new();
     let waiting = wheel.handle().spawn(SpawnParams::default(), signal.clone()).unwrap();
     let handle = wheel.handle().clone();
-    assert_eq!(handle.get_state(waiting), State::Runnable);//just created
+    assert_eq!(handle.get_state(waiting), Some(State::Runnable));//just created
     let ctrl = wheel.handle().spawn(SpawnParams::default(), async move {
         yield_once!();//wait for polling 'waiting' at least once.
-        assert_eq!(handle.get_state(waiting), State::Waiting);
+        assert_eq!(handle.get_state(waiting), Some(State::Waiting));
         assert_eq!(signal.poll_count(), 1);
         handle.suspend(waiting);
         yield_once!();
-        assert_eq!(handle.get_state(waiting), State::Suspended);
+        assert_eq!(handle.get_state(waiting), Some(State::Suspended));
         assert_eq!(signal.poll_count(), 1);
         Yield::times(10).await;
         assert_eq!(signal.poll_count(), 1);
         handle.resume(waiting);
-        assert_eq!(handle.get_state(waiting), State::Waiting);
+        assert_eq!(handle.get_state(waiting), Some(State::Waiting));
         yield_once!();
         assert_eq!(signal.poll_count(), 1);
-        assert_eq!(handle.get_state(waiting), State::Waiting);
+        assert_eq!(handle.get_state(waiting), Some(State::Waiting));
         signal.signal(false);
-        assert_eq!(handle.get_state(waiting), State::Runnable);
+        assert_eq!(handle.get_state(waiting), Some(State::Runnable));
         Yield::times(2).await;
         assert_eq!(signal.poll_count(), 2);
-        assert_eq!(handle.get_state(waiting), State::Waiting);
+        assert_eq!(handle.get_state(waiting), Some(State::Waiting));
         signal.signal(true);
-        assert_eq!(handle.get_state(waiting), State::Runnable);
+        assert_eq!(handle.get_state(waiting), Some(State::Runnable));
         Yield::times(2).await;
         assert_eq!(signal.poll_count(), 3);
-        assert_eq!(handle.get_state(waiting), State::Unknown);//task completed
+        assert_eq!(handle.get_state(waiting), Some(State::Inactive));//task completed
     }).unwrap();
     assert_ne!(waiting, ctrl);
 
@@ -229,7 +229,7 @@ fn test_suspend_waiting() {
     wheel.handle().spawn(SpawnParams::default(), async move {
         yield_once!();
         assert_eq!(signal.poll_count(), 1);
-        assert_eq!(handle.get_state(waiting), State::Waiting);
+        assert_eq!(handle.get_state(waiting), Some(State::Waiting));
         //after this task finishes 'waiting' should be only one task in scheduler.
         handle.suspend(waiting);
     }).unwrap();

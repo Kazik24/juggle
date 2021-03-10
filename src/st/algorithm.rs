@@ -54,6 +54,28 @@ impl StaticAlgorithm{
         self.suspended_count.set(suspended);
         self.unfinished_count.set(self.registry.len());
     }
+    pub(crate) fn dispose(&'static self){
+        let _guard = DropGuard::new(move||{
+            //invalidate all handles
+            //only need to be volatile increment, this can't be concurrent
+            self.current_generation.store(self.current_generation.load(Relaxed).wrapping_add(1),Relaxed);
+        });
+        if self.unfinished_count.get() == 0 { //no task is alive, lazy reset
+            return;//init will handle state changes to tasks, we return here to avoid unnecessary cleanup
+        }
+        let mut it = self.registry.iter();
+        while let Some(task) = it.next() {
+            let cleanup = DropGuard::new(||{
+                //panic occurred, do emergency cleanup
+                while let Some(task) = it.next() {
+                    task.cleanup(StaticHandle::with_id(self,usize::MAX)); //aborts on another panic
+                }
+            });
+            task.cleanup(StaticHandle::with_id(self,usize::MAX)); //dummy id
+            forget(cleanup);//didn't panic so continue
+        }
+    }
+
     pub(crate) fn get_generation(&self)->usize {
         self.current_generation.load(Relaxed) //only volatile read cause it might be read from concurrent threads
     }
@@ -105,7 +127,7 @@ impl StaticAlgorithm{
         match self.registry.get(key) {
             Some(task) => {
                 match task.get_stop_reason() {
-                    //if restart suspended, then chang to just restart
+                    //if restart suspended, then change to just restart
                     StopReason::Suspended | StopReason::RestartSuspended => self.dec_suspended(),
                     StopReason::Cancelled | StopReason::Finished => self.inc_unfinished(),
                     StopReason::Restart => return true,//todo decide if user should know about restarting state cause its only market state
@@ -130,28 +152,6 @@ impl StaticAlgorithm{
             }
         }
         false
-    }
-
-    pub(crate) fn dispose(&'static self){
-        let _guard = DropGuard::new(move||{
-            //invalidate all handles
-            //only need to be volatile increment, this can't be concurrent
-            self.current_generation.store(self.current_generation.load(Relaxed).wrapping_add(1),Relaxed);
-        });
-        if self.unfinished_count.get() == 0 { //no task is alive, lazy reset
-            return;//init will handle state changes to tasks, we return here to avoid unnecessary cleanup
-        }
-        let mut it = self.registry.iter();
-        while let Some(task) = it.next() {
-            let cleanup = DropGuard::new(||{
-                //panic occurred, do emergency cleanup
-                while let Some(task) = it.next() {
-                    task.cleanup(StaticHandle::with_id(self,usize::MAX)); //aborts on another panic
-                }
-            });
-            task.cleanup(StaticHandle::with_id(self,usize::MAX)); //dummy id
-            forget(cleanup);//didn't panic so continue
-        }
     }
 
     pub(crate) fn poll_internal(&'static self, cx: &mut Context<'_>) -> Poll<bool> {

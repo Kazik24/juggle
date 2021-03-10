@@ -60,9 +60,8 @@ pub enum State {
     Waiting,
     /// Task is cancelled but was not removed form scheduler yet.
     Cancelled,
-    /// Given key has no associated task with it, handle used to obtain state was invalid or task
-    /// has completed and was removed from scheduler.
-    Unknown,
+    /// Given key has no associated task with it or task completed and was removed from scheduler.
+    Inactive,
 }
 
 macro_rules! unwrap_weak {
@@ -161,7 +160,7 @@ impl<'futures> WheelHandle<'futures> {
     ///
     /// If task is already executing then it will become cancelled when next yield occurs. Note that when
     /// getting [state](#method.get_state) of this cancelled task it might be `Cancelled` for some time
-    /// but eventually it will become `Unknown` because scheduler removes tasks only after circling
+    /// but eventually it will become `Inactive` because scheduler removes tasks only after circling
     /// through all runnable tasks. Then when new task is spawned it might be assigned to the same id.
     pub fn cancel(&self, id: IdNum) -> bool {
         let this = unwrap_weak!(self,false);
@@ -187,9 +186,9 @@ impl<'futures> WheelHandle<'futures> {
     }
     /// Get state of task with given id.
     ///
-    /// If this handle is [`invalid`](#method.is_valid) then returns
-    /// [`State::Unknown`](enum.State.html#variant.Unknown).
-    /// For more information about allowed states see [`State`](enum.State.html).
+    /// If this handle is [`invalid`] then returns
+    /// `None`.
+    /// For more information about allowed states see [`State`].
     ///
     /// # Examples
     /// ```
@@ -199,12 +198,12 @@ impl<'futures> WheelHandle<'futures> {
     /// let id1 = wheel.handle().spawn(SpawnParams::default(),async {/*...*/}).unwrap();
     /// let id2 = wheel.handle().spawn(SpawnParams::suspended(true),async {/*...*/}).unwrap();
     ///
-    /// assert_eq!(wheel.handle().get_state(id1),State::Runnable);
-    /// assert_eq!(wheel.handle().get_state(id2),State::Suspended);
+    /// assert_eq!(wheel.handle().get_state(id1),Some(State::Runnable));
+    /// assert_eq!(wheel.handle().get_state(id2),Some(State::Suspended));
     /// ```
-    pub fn get_state(&self, id: IdNum) -> State {
-        let this = unwrap_weak!(self,State::Unknown);
-        this.get_state(id.to_usize())
+    pub fn get_state(&self, id: IdNum) -> Option<State> {
+        let this = unwrap_weak!(self,None);
+        Some(this.get_state(id.to_usize()))
     }
     /// Get id of currently executing task.
     ///

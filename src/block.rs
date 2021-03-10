@@ -7,7 +7,7 @@ use crate::utils::noop_waker;
 /// Utility for busy blocking on future.
 ///
 /// Usefull for creating main loop on embedded systems. This function simply polls given future until it is ready.
-/// Waker used in polling is no-op, when future yields then it is polled again (with `spin_loop_hint` optimization).
+/// Waker used in polling is no-op, when future yields then it is polled again (with [`spin_loop`] optimization).
 ///
 /// Equivalent to `block_on(future, || spin_loop(), &noop_waker())`.
 /// # Examples

@@ -4,6 +4,7 @@ use core::mem::{forget, ManuallyDrop};
 use core::ops::DerefMut;
 use core::sync::atomic::*;
 use core::convert::identity;
+use core::hint::spin_loop;
 
 /// Wrapper struct that allows modifying and swapping value without using locks.
 ///
@@ -63,7 +64,7 @@ impl<T> AtomicCell<T> {
                 Ok(val) => return val,
                 Err(val) => {
                     value = val;
-                    spin_loop_hint();
+                    spin_loop();
                 }
             }
         }
@@ -120,7 +121,7 @@ impl<T> AtomicCell<T> {
                 Ok(res) => return res,
                 Err(f) => {
                     func = f;
-                    spin_loop_hint();
+                    spin_loop();
                 }
             }
         }
