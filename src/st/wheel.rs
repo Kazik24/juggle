@@ -1,13 +1,12 @@
-use std::future::Future;
+use core::future::Future;
 use crate::dy::SuspendError;
-use std::marker::PhantomData;
-use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::convert::identity;
-use std::ops::Not;
-use std::thread::spawn;
-use std::task::{Context, Poll};
-use std::pin::Pin;
+use core::marker::PhantomData;
+use core::cell::RefCell;
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::convert::identity;
+use core::ops::Not;
+use core::task::{Context, Poll};
+use core::pin::Pin;
 use crate::spin_block_on;
 use crate::st::stt_future::StaticFuture;
 use crate::st::handle::StaticHandle;
@@ -39,8 +38,10 @@ impl StaticWheelDef{
     pub fn is_locked(&'static self)->bool { self.lock.load(Ordering::Relaxed) }
     pub fn try_lock(&'static self)->Option<StaticWheel>{
         if !self.lock.compare_exchange(false,true,Ordering::AcqRel,Ordering::Acquire).unwrap_or_else(identity) {
+            //created earlier just in case init panic
+            let obj = StaticWheel{ alg: &self, _phantom: PhantomData};
             self.algorithm.init();
-            return Some(StaticWheel{ alg: &self, _phantom: PhantomData});
+            return Some(obj);
         }
         None
     }
@@ -71,7 +72,8 @@ impl Future for StaticWheel{
 impl Drop for StaticWheel{
     fn drop(&mut self) {
         let guard = DropGuard::new(||self.alg.lock.store(false,Ordering::Release));
-        self.alg.algorithm.reset_all_tasks();
+        //we need to properly dispose scheduler, only after that lock can be released
+        self.alg.algorithm.dispose();
         drop(guard);
     }
 }

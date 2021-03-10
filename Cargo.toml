@@ -17,7 +17,8 @@ default = ["std"]
 std = []
 
 [dependencies]
-smallvec = "1.4.2"
+smallvec = { version = "1.4.2", features = ["union"]}
+once_cell = { version = "1.7.2", default-features = false, features = []}
 
 [dev-dependencies]
 rand = "0.7.3"

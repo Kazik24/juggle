@@ -6,6 +6,7 @@ use core::pin::Pin;
 use core::task::*;
 use super::handle::*;
 use crate::dy::Algorithm;
+use crate::spin_block_on;
 
 /// Single-thread async task scheduler with dynamic task state control. Implements `Future`.
 ///
@@ -148,6 +149,12 @@ impl<'futures> Wheel<'futures> {
         let alg = Rc::try_unwrap(self.ptr).ok().expect("Cannot lock inside call to handle's method.");
         LockedWheel { alg }
     }
+
+    pub fn spin_block(self)->Result<(),SuspendError>{ spin_block_on(self) }
+    pub fn spin_block_forever(self)->!{
+        self.spin_block().unwrap();
+        panic!("Wheel::spin_block_forever(): Didn't expect all tasks to finish.")
+    }
 }
 
 impl<'futures> LockedWheel<'futures> {
@@ -158,6 +165,12 @@ impl<'futures> LockedWheel<'futures> {
     /// again after calling this method, new [`handle`](struct.Wheel.html#method.handle) should be obtained.
     pub fn unlock(self) -> Wheel<'futures> {
         Wheel::from_inner(self.alg)
+    }
+
+    pub fn spin_block(self)->Result<(),SuspendError>{ spin_block_on(self) }
+    pub fn spin_block_forever(self)->!{
+        self.spin_block().unwrap();
+        panic!("LockedWheel::spin_block_forever(): Didn't expect all tasks to finish.")
     }
 }
 

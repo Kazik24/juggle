@@ -31,18 +31,18 @@ async fn test_task(handle: StaticHandle) {
     println!("Task [{}] exit", handle.get_current_name().unwrap_or(""));
 }
 
-#[test]
-pub fn test_round_robin() {
-    static WHEEL: StaticWheelDef = static_config!{
-        (handle) StaticParams::named("T1") => test_task(handle),
-        (handle) StaticParams::named("WT11").suspend(true) => waiting_task(handle),
-        (handle) StaticParams::named("T2") => test_task(handle),
-        (handle) StaticParams::named("WT12").suspend(true) => waiting_task(handle),
-        (handle) StaticParams::named("T3") => test_task(handle),
-        (handle) StaticParams::named("WT13").suspend(true) => waiting_task(handle),
-        (handle) StaticParams::named("T4") => test_task(handle)
-    };
-    let wheel = WHEEL.lock();
-    smol::block_on(wheel).unwrap();
-    println!("Finished round robin.");
-}
+// #[test]
+// pub fn test_round_robin() {
+//     static WHEEL: StaticWheelDef = static_config!{
+//         (handle) StaticParams::named("T1") => test_task(handle),
+//         (handle) StaticParams::named("WT11").suspend(true) => waiting_task(handle),
+//         (handle) StaticParams::named("T2") => test_task(handle),
+//         (handle) StaticParams::named("WT12").suspend(true) => waiting_task(handle),
+//         (handle) StaticParams::named("T3") => test_task(handle),
+//         (handle) StaticParams::named("WT13").suspend(true) => waiting_task(handle),
+//         (handle) StaticParams::named("T4") => test_task(handle)
+//     };
+//     let wheel = WHEEL.lock();
+//     smol::block_on(wheel).unwrap();
+//     println!("Finished round robin.");
+// }

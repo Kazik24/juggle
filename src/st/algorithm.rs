@@ -1,15 +1,15 @@
-use std::ops::Index;
+use core::ops::Index;
 use crate::st::stt_future::StaticFuture;
-use std::cell::{Cell, UnsafeCell};
+use core::cell::{Cell, UnsafeCell};
 use crate::utils::{AtomicWakerRegistry, Ucw, DropGuard};
 use crate::dy::algorithm::TaskKey;
-use std::task::{Context, Poll};
+use core::task::{Context, Poll};
 use crate::st::handle::StaticHandle;
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 use crate::st::StopReason;
-use std::mem::forget;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::Relaxed;
+use core::mem::forget;
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering::Relaxed;
 
 pub(crate) struct StaticAlgorithm{
     registry: &'static [StaticFuture],
@@ -28,8 +28,8 @@ impl StaticAlgorithm{
             last_waker: AtomicWakerRegistry::empty(),
             current: Cell::new(None),
             suspended_count: Cell::new(0),
-            unfinished_count: Cell::new(usize::MAX),
-            current_generation: AtomicUsize::new(usize::MAX), //will become 0 after first init
+            unfinished_count: Cell::new(usize::MAX), //uninit mark
+            current_generation: AtomicUsize::new(0),
         }
     }
     pub(crate) fn init(&'static self){ //create all self-refs
@@ -37,7 +37,8 @@ impl StaticAlgorithm{
         if self.unfinished_count.get() == usize::MAX { //was never initialized
             //all tasks are in uninit state
             for task in self.registry.iter() {
-                if task.init(&self.last_waker) {
+                task.init(&self.last_waker); //create self references only once
+                if task.reset() {
                     suspended += 1;
                 }
             }
@@ -45,15 +46,13 @@ impl StaticAlgorithm{
             //all task are in ether uninit or dropped state
             for task in self.registry.iter() {
                 task.cancel(StaticHandle::with_id(self,usize::MAX),true); //dummy id
-                if task.init(&self.last_waker) {
+                if task.reset() {
                     suspended += 1;
                 }
             }
         }
         self.suspended_count.set(suspended);
         self.unfinished_count.set(self.registry.len());
-        //only need to be volatile increment, init can't be concurrent
-        self.current_generation.store(self.current_generation.load(Relaxed).wrapping_add(1),Relaxed);
     }
     pub(crate) fn get_generation(&self)->usize {
         self.current_generation.load(Relaxed) //only volatile read cause it might be read from concurrent threads
@@ -133,7 +132,12 @@ impl StaticAlgorithm{
         false
     }
 
-    pub(crate) fn reset_all_tasks(&'static self){
+    pub(crate) fn dispose(&'static self){
+        let _guard = DropGuard::new(move||{
+            //invalidate all handles
+            //only need to be volatile increment, this can't be concurrent
+            self.current_generation.store(self.current_generation.load(Relaxed).wrapping_add(1),Relaxed);
+        });
         if self.unfinished_count.get() == 0 { //no task is alive, lazy reset
             return;//init will handle state changes to tasks, we return here to avoid unnecessary cleanup
         }

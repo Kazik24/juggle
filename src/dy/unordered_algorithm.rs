@@ -12,7 +12,7 @@ use crate::dy::handle::State;
 use crate::dy::registry::Registry;
 use crate::utils::{AtomicWakerRegistry, DropGuard, Ucw};
 use crate::dy::stat::{TaskWrapper, StopReason, TaskRegistry};
-use std::cmp::max;
+use core::cmp::max;
 
 pub(crate) type TaskKey = usize;
 

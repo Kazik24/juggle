@@ -114,12 +114,15 @@ pub unsafe fn handle_task<T,F>(task: &'static mut MaybeUninit<T>,flag: &'static 
 
 #[cfg(test)]
 mod tests{
+    extern crate std;
     use super::*;
     use crate::{*, utils::*, dy::*};
     use crate::st::{StaticWheelDef,StaticWheel,StaticHandle};
     use std::sync::atomic::*;
     use std::sync::Arc;
     use std::task::Waker;
+    use std::prelude::v1::*;
+    use std::*;
 
 
     async fn do_sth(){

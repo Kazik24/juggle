@@ -204,7 +204,7 @@ impl AtomicWakerRegistry {
     }
 }
 
-pub async fn forever<F: Future>(future: F){
+pub async fn forever<F: Future>(future: F)->!{
     future.await;
     panic!("Future was supposed to run forever :/");
 }

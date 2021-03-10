@@ -6,12 +6,13 @@ use crate::st::handle::StaticHandle;
 use core::mem::ManuallyDrop;
 use crate::st::config::{CANCEL_TASK, RESTART_TASK, FnPtrWrapper, UNINIT_TASK};
 use crate::st::{StopReason, StaticParams};
+use once_cell::unsync::OnceCell;
 
 /// Implementations specific for static_config! macro. Do not use directly.
 pub struct StaticFuture{
     //not send not sync
     static_poll: FnPtrWrapper,
-    flags: UnsafeCell<Option<StaticSyncFlags>>,
+    flags: OnceCell<StaticSyncFlags>,
     name: Option<&'static str>,
     stop_reason: Cell<StopReason>,
     polling: Cell<bool>,
@@ -28,20 +29,22 @@ impl StaticFuture{
     pub const fn new(poll: FnPtrWrapper,params: StaticParams)->Self{
         Self{
             static_poll: poll,
-            flags: UnsafeCell::new(None),
+            flags: OnceCell::new(),
             name: params.name,
             stop_reason: Cell::new(StopReason::None),
             polling: Cell::new(false),
             start_suspended: params.suspended,
         }
     }
-    pub(crate)fn init(&self,global: &'static AtomicWakerRegistry)->bool{//true if initialized suspended
+    pub(crate)fn init(&self,global: &'static AtomicWakerRegistry){
+        self.flags.set(StaticSyncFlags::new(global)).ok().unwrap();
+    }
+    pub(crate)fn reset(&self)->bool{//true if initialized suspended
         self.set_stop_reason(if self.start_suspended {StopReason::Suspended} else {StopReason::None});
-        unsafe{ *self.flags.get() = Some(StaticSyncFlags::new(global)); }
         self.start_suspended
     }
     fn get_flags(&self)->&StaticSyncFlags{
-        unsafe{ &*self.flags.get() }.as_ref().expect("StaticFuture init error")
+        self.flags.get().expect("StaticFuture init error")
     }
 
     pub(crate)fn get_name(&self) -> Option<&'static str> { self.name }

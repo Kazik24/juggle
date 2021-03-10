@@ -1,9 +1,9 @@
 use core::future::Future;
-use std::task::{Context, Poll, Waker};
-use std::pin::Pin;
+use core::task::{Context, Poll, Waker};
+use core::pin::Pin;
 use core::sync::atomic::*;
-use std::cell::{UnsafeCell, Cell};
-use std::marker::PhantomData;
+use core::cell::{UnsafeCell, Cell};
+use core::marker::PhantomData;
 use smallvec::Array;
 
 ///Interrupt safe signalling.

@@ -1,5 +1,5 @@
 use crate::st::algorithm::StaticAlgorithm;
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 use crate::dy::IdNum;
 
 
