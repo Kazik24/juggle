@@ -181,5 +181,6 @@ mod tests{
     #[test]
     fn test_config(){
         CONFIG.lock().spin_block().unwrap();
+        CONFIG.lock();
     }
 }

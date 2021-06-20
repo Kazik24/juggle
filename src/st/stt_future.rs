@@ -39,8 +39,9 @@ impl StaticFuture{
     pub(crate)fn init(&self,global: &'static AtomicWakerRegistry){
         self.flags.set(StaticSyncFlags::new(global)).ok().unwrap();
     }
-    pub(crate)fn reset(&self)->bool{//true if initialized suspended
-        self.set_stop_reason(if self.start_suspended {StopReason::Suspended} else {StopReason::None});
+    pub(crate)fn reset(&self, defaults: bool)->bool{//true if initialized suspended
+        self.set_stop_reason(if self.start_suspended && defaults {StopReason::Suspended} else {StopReason::None});
+        self.get_flags().set_runnable_relaxed(true);
         self.start_suspended
     }
     fn get_flags(&self)->&StaticSyncFlags{
@@ -100,6 +101,7 @@ impl StaticSyncFlags {
         }
     }
     fn is_runnable(&self) -> bool { self.runnable.load(Ordering::Relaxed) }
+    fn set_runnable_relaxed(&self, value: bool) { self.runnable.store(value, Ordering::Relaxed) }
     fn set_runnable(&self, value: bool) { self.runnable.store(value, Ordering::Release) }
 }
 

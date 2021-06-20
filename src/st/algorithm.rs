@@ -10,6 +10,7 @@ use crate::st::StopReason;
 use core::mem::forget;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
+use crate::dy::State;
 
 pub(crate) struct StaticAlgorithm{
     registry: &'static [StaticFuture],
@@ -38,7 +39,7 @@ impl StaticAlgorithm{
             //all tasks are in uninit state
             for task in self.registry.iter() {
                 task.init(&self.last_waker); //create self references only once
-                if task.reset() {
+                if task.reset(true) {
                     suspended += 1;
                 }
             }
@@ -46,7 +47,7 @@ impl StaticAlgorithm{
             //all task are in ether uninit or dropped state
             for task in self.registry.iter() {
                 task.cancel(StaticHandle::with_id(self,usize::MAX),true); //dummy id
-                if task.reset() {
+                if task.reset(true) {
                     suspended += 1;
                 }
             }
@@ -154,6 +155,22 @@ impl StaticAlgorithm{
         false
     }
 
+    pub(crate) fn get_state(&self, key: TaskKey) -> State {
+        match self.registry.get(key) {
+            Some(task) => match task.get_stop_reason() {
+                StopReason::Finished => State::Inactive,
+                StopReason::Cancelled => State::Cancelled,
+                StopReason::Suspended | StopReason::RestartSuspended => State::Suspended,
+                StopReason::Restart => State::Runnable,
+                StopReason::None => {
+                    if task.is_runnable() { State::Runnable }
+                    else { State::Waiting }
+                }
+            }
+            None => State::Inactive,
+        }
+    }
+
     pub(crate) fn poll_internal(&'static self, cx: &mut Context<'_>) -> Poll<bool> {
         let waker = cx.waker();
         self.last_waker.clear();//drop previous waker if any
@@ -190,11 +207,14 @@ impl StaticAlgorithm{
                 }
                 StopReason::Restart => {
                     run_task.set_stop_reason(StopReason::None);
+                    run_task.cancel(StaticHandle::with_id(self,usize::MAX),true); //drop task and set it to uninit
+                    run_task.reset(false);
                     true
                 }
                 StopReason::RestartSuspended => {
                     run_task.set_stop_reason(StopReason::Suspended);
                     run_task.cancel(StaticHandle::with_id(self,usize::MAX),true); //drop task and set it to uninit
+                    run_task.reset(false);
                     continue; //task is suspended so we're done here
                 }
                 StopReason::Finished | StopReason::Suspended => continue, //not pollable
