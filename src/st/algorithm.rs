@@ -11,6 +11,7 @@ use core::mem::forget;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use crate::dy::State;
+use std::sync::atomic::Ordering::{Acquire, Release};
 
 pub(crate) struct StaticAlgorithm{
     registry: &'static [StaticFuture],
@@ -59,7 +60,8 @@ impl StaticAlgorithm{
         let _guard = DropGuard::new(move||{
             //invalidate all handles
             //only need to be volatile increment, this can't be concurrent
-            self.current_generation.store(self.current_generation.load(Relaxed).wrapping_add(1),Relaxed);
+            //todo changed to acq/rel cause it should prevent bugs when multiple threads will see unmodified handle
+            self.current_generation.store(self.current_generation.load(Acquire).wrapping_add(1),Release);
         });
         if self.unfinished_count.get() == 0 { //no task is alive, lazy reset
             return;//init will handle state changes to tasks, we return here to avoid unnecessary cleanup

@@ -29,7 +29,9 @@ pub struct StaticWheel{
 
 impl StaticWheelDef{
     /// This method should not be used, it is exposed only due to use in macro.
-    pub const fn from_raw_config(config: &'static [StaticFuture])->Self{
+    #[doc(hidden)]
+    #[inline]
+    pub(crate) const fn from_raw_config(config: &'static [StaticFuture])->Self{
         Self{
             lock: AtomicBool::new(false),
             algorithm: StaticAlgorithm::from_raw_config(config),

@@ -20,27 +20,23 @@ macro_rules! static_config {
         ),*
     ) => {
         {
-            use core::future::Future;
-            use core::mem::MaybeUninit;
-            use $crate::st::{StaticHandle, StaticParams};
-            use $crate::macro_private::*;
-            static ARRAY: [StaticFuture;static_config!(@impl_cnt $($async_expr),*)] = [$(
-                StaticFuture::new({
-                    type TaskType = impl Future<Output=()> + 'static;
-                    fn wrapper(_handle: StaticHandle)->TaskType{
+            static ARRAY: [$crate::macro_private::StaticFuture;static_config!(@impl_cnt $($async_expr),*)] = [$(
+                $crate::macro_private::StaticFuture::new({
+                    type TaskType = impl core::future::Future<Output=()> + 'static;
+                    fn wrapper(_handle: $crate::st::StaticHandle)->TaskType{
                         $(let $handle_var = _handle;)?
                         $async_expr
                     }
-                    FnPtrWrapper(|handle,cx,status|{
+                    $crate::macro_private::FnPtrWrapper(|handle,cx,status|{
                         //todo check if this can cause unsafety cause operations aren't volatile
-                        static mut POLL: MaybeUninit<TaskType> = unsafe{ MaybeUninit::uninit() };
+                        static mut POLL: core::mem::MaybeUninit<TaskType> = core::mem::MaybeUninit::uninit();
                         static mut INIT_FLAG: u8 = 0; //uninit
                         unsafe{
-                            handle_task(&mut POLL,&mut INIT_FLAG,status,move||wrapper(handle),cx)
+                            $crate::macro_private::handle_task(&mut POLL,&mut INIT_FLAG,status,move||wrapper(handle),cx)
                         }
                     }) //return pointer wrapper from expression
                 },{ StaticParams::new() $(; $params_expr )?}) ),*];
-            $crate::st::StaticWheelDef::from_raw_config(&ARRAY)
+            $crate::macro_private::config_static(&ARRAY)
         }
     }
 }
@@ -124,6 +120,10 @@ mod tests{
     use std::prelude::v1::*;
     use std::*;
 
+    #[test]
+    fn prove_of_concept(){
+        //try to make static config with initialization function that can be restarted
+    }
 
     async fn do_sth(){
         let _guard = DropGuard::new(||println!("do_sth guard dropped"));

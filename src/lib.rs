@@ -68,7 +68,7 @@
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(min_type_alias_impl_trait,type_alias_impl_trait,impl_trait_in_bindings)]
+#![feature(type_alias_impl_trait)]
 
 #![warn(clippy::cargo,
     clippy::needless_borrow,
@@ -82,11 +82,22 @@ pub mod dy;
 pub mod st;
 mod yield_helper;
 mod block;
+
+#[doc(hidden)]
 pub mod macro_private{
     //! Implementations specific for static_config! macro. Do not use directly.
+    #[doc(hidden)]
     pub use crate::st::StaticFuture;
+    #[doc(hidden)]
     pub use crate::st::handle_task;
+    #[doc(hidden)]
     pub use crate::st::FnPtrWrapper;
+    use crate::st::StaticWheelDef;
+    /// This method should not be used, it is exposed only due to use in macro.
+    #[doc(hidden)]
+    pub const fn config_static(config: &'static [StaticFuture])->StaticWheelDef{
+        StaticWheelDef::from_raw_config(config)
+    }
 }
 
 pub use self::block::{block_on, spin_block_on};

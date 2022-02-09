@@ -26,6 +26,7 @@ unsafe impl Sync for StaticFuture {}
 impl StaticFuture{
 
     /// Implementations specific for static_config! macro. Do not use directly.
+    #[doc(hidden)]
     pub const fn new(poll: FnPtrWrapper,params: StaticParams)->Self{
         Self{
             static_poll: poll,
